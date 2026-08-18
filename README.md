@@ -14,6 +14,8 @@
 - **大板友好**：`createParser` 采用分块喂入（chunked feeding）方式解析 Gerber 文本，避免大文件一次性 parse 导致栈溢出
 - **ZIP 打包**：全部 SVG 文件统一压缩到一个 ZIP，方便分发
 - **一键导出**：支持导出当前板子或工程下所有板子
+- **自定义导出**：支持勾选层、设置镜像、合并/独立导出
+- **网络标注**：铜层 SVG 节点自动标注 `net` 属性
 
 ## 文件命名规则
 
@@ -29,10 +31,12 @@ Gerber_BoardOutline.GKO.svg
 ZIP 包名：
 
 ```
-<板子名称>.zip
+SVG_<板子名称>_<PCB文件名>.zip
 ```
 
-例如 `MyBoard.zip`。
+例如 `SVG_MyBoard_PCB1_V1.0.zip`。
+
+合并导出时，ZIP 内仅含一个 `Merged.svg`；独立导出时，ZIP 内为各层 SVG。
 
 ## 安装与使用
 
@@ -45,7 +49,8 @@ ZIP 包名：
 ## 菜单项
 
 - `PCB` 编辑器菜单 → **Export PCB to SVG**
-  - **Export Current Board to SVG...** — 导出当前打开的板子
+  - **Export Current Board to SVG...** — 导出当前打开的板子（全部层，不镜像，独立 SVG）
+  - **Export Current Board to SVG (Custom)...** — 自定义导出：勾选层、设置镜像、合并/独立导出
   - **Export All Boards to SVG...** — 导出工程下所有板子
 
 ## 开发
@@ -73,6 +78,7 @@ src/
 ├─ index.ts            # 入口：菜单处理、导出流程 orchestration、ZIP 保存
 ├─ gerber-source.ts    # 从 EDA 获取 Gerber ZIP 并解压、分类层角色
 ├─ gerber-render.ts    # 用 tracespace v5 解析/铺铜/渲染 Gerber → SVG
+├─ pour-net.ts         # 收集画布铺铜网络，给铜层 SVG 节点标注 net 属性
 └─ zip-builder.ts      # 基于 JSZip 的浏览器端 ZIP 打包
 
 locales/               # 多语言文案（i18n）
@@ -96,6 +102,10 @@ SVG 屏幕坐标：Y 轴向下为正。
 - **解析策略**：`src/gerber-render.ts` 中 `parseGerberText` 将 Gerber 文本按 500 行分块喂给 `createParser()`，避免一次性解析大文件爆栈
 - **渲染链**：`parse` → `plot` → `render`，最终通过自定义的 HAST → XML 序列化生成带 XML 声明的 SVG 字符串
 - **颜色**：每个 SVG 使用 EDA 层表中对应层的颜色作为 `currentColor`
+- **网络标注**：`src/pour-net.ts` 通过 `getPrimitiveAtPoint` 命中焊盘/走线/过孔，并对铺铜区域用 complexPolygon 包围盒 + 自校准偏移匹配网络
+- **自定义导出**：`src/index.ts` 通过 `sys_Dialog.showSelectDialog` 让用户选层、选镜像层，`showConfirmationMessage` 选择合并/独立模式
+- **合并导出**：把各层 SVG 子节点按层分组，统一到一个 `viewBox` 中，每层一个带 `style="color:..."` 的 `<g>`
+- **镜像**：对需要镜像的层绕其 SVG 中心线做水平翻转（`translate(2*cx, 0) scale(-1, 1)`）
 - **打包**：`JSZip.generateAsync({ type: 'blob', compression: 'DEFLATE' })`
 - **保存**：`eda.sys_FileSystem.saveFile(blob, fileName)`
 
