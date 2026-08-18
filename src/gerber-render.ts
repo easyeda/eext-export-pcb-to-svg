@@ -347,16 +347,73 @@ async function renderLayerToTree(
 	return { ok: true, layer, image, svg: render(image) as HastElement };
 }
 
+export interface RenderOptions {
+	/** 是否把所有层合并到一个 SVG 中 */
+	merge?: boolean;
+	/** 需要水平镜像的层 originalFilename 集合 */
+	mirrorLayerIds?: Set<string>;
+}
+
+function parseViewBox(vb: string | number[] | undefined): [number, number, number, number] | null {
+	if (Array.isArray(vb)) {
+		if (vb.length === 4 && vb.every(v => typeof v === 'number'))
+			return vb as [number, number, number, number];
+		return null;
+	}
+	if (typeof vb === 'string') {
+		const nums = vb.trim().split(/\s+/).map(Number).filter(n => !Number.isNaN(n));
+		if (nums.length === 4)
+			return nums as [number, number, number, number];
+	}
+	return null;
+}
+
+function viewBoxString(vb: [number, number, number, number]): string {
+	return `${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`;
+}
+
+function combineViewBoxes(boxes: Array<[number, number, number, number]>): [number, number, number, number] | null {
+	if (boxes.length === 0)
+		return null;
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for (const [x, y, w, h] of boxes) {
+		minX = Math.min(minX, x);
+		minY = Math.min(minY, y);
+		maxX = Math.max(maxX, x + w);
+		maxY = Math.max(maxY, y + h);
+	}
+	return [minX, minY, maxX - minX, maxY - minY];
+}
+
+/** 把若干子节点包成一层，可选水平镜像。镜像绕该层中心线翻转。 */
+function wrapLayerChildren(
+	children: (HastElement | string)[],
+	color: string,
+	mirror: boolean,
+	centerX: number,
+): HastElement {
+	const transform = mirror ? `translate(${2 * centerX}, 0) scale(-1, 1)` : undefined;
+	const props: Record<string, unknown> = { style: `color:${escapeAttr(color)}` };
+	if (transform)
+		props.transform = transform;
+	return { type: 'element', tagName: 'g', properties: props, children };
+}
+
 /**
  * 入口：渲染所有层。
- * 先渲染全部层并取板框（outline）的画布最小角，推导 ComplexPolygon 偏移量，
+ * 先渲染全部层并用"铺铜包围盒中心 ↔ SVG 填充区域中心"聚类推导 complexPolygon 偏移量，
  * 再给铜皮层标注 `net` 属性。
  * @param layers 各层 Gerber 文本
  * @param pourById 画布覆铜网络表（primitiveId → 网络），用于给铜皮区域标注 `net` 属性
+ * @param opts 可选：merge 合并为一个 SVG；mirrorLayerIds 设置镜像层
  */
 export async function renderGerberLayersToSvgs(
 	layers: GerberLayerText[],
 	pourById: Map<string, PourNet> = new Map(),
+	opts: RenderOptions = {},
 ): Promise<RenderedSvg[]> {
 	const rendered: Array<{ ok: true; layer: GerberLayerText; image: ImageTree; svg: HastElement } | { ok: false; content: string; role: GerberLayerText['role']; filename: string }> = [];
 	for (let i = 0; i < layers.length; i++)
@@ -372,12 +429,9 @@ export async function renderGerberLayersToSvgs(
 	}
 	const offset = derivePourOffset(rendered, poursByLayer);
 
-	const out: RenderedSvg[] = [];
-	for (const r of rendered) {
-		if (!r.ok) {
-			out.push({ filename: r.filename, role: r.role, content: r.content });
-			continue;
-		}
+	const successItems = rendered.filter((r): r is { ok: true; layer: GerberLayerText; image: ImageTree; svg: HastElement } => r.ok);
+
+	for (const r of successItems) {
 		const { layer, image, svg } = r;
 		const color = layer.color || '#888888';
 		svg.properties = {
@@ -388,13 +442,71 @@ export async function renderGerberLayersToSvgs(
 		const canvasLayerId = copperCanvasLayerId(layer);
 		if (canvasLayerId !== null && offset)
 			await attachNets(image, svg, canvasLayerId, pourById, pourGeoms, offset);
+	}
 
-		const xml = hastToXml(svg);
-		out.push({
-			filename: safeGerberFilename(layer.originalFilename),
-			role: layer.role,
-			content: `<?xml version="1.0" encoding="UTF-8"?>\n${xml}\n`,
-		});
+	if (opts.merge)
+		return [renderMergedSvg(successItems, opts.mirrorLayerIds || new Set())];
+
+	const out: RenderedSvg[] = [];
+	for (const r of rendered) {
+		if (!r.ok) {
+			out.push({ filename: r.filename, role: r.role, content: r.content });
+			continue;
+		}
+		out.push(renderSingleSvg(r.layer, r.svg, opts.mirrorLayerIds || new Set()));
 	}
 	return out;
+}
+
+function renderSingleSvg(layer: GerberLayerText, svg: HastElement, mirrorIds: Set<string>): RenderedSvg {
+	const vb = parseViewBox(svg.properties?.viewBox);
+	const shouldMirror = mirrorIds.has(layer.originalFilename);
+	if (shouldMirror && vb) {
+		const centerX = vb[0] + vb[2] / 2;
+		svg.children = [wrapLayerChildren(svg.children || [], layer.color || '#888888', true, centerX)];
+	}
+	const xml = hastToXml(svg);
+	return {
+		filename: safeGerberFilename(layer.originalFilename),
+		role: layer.role,
+		content: `<?xml version="1.0" encoding="UTF-8"?>\n${xml}\n`,
+	};
+}
+
+function renderMergedSvg(
+	items: Array<{ layer: GerberLayerText; svg: HastElement }>,
+	mirrorIds: Set<string>,
+): RenderedSvg {
+	const viewBoxes: Array<[number, number, number, number]> = [];
+	for (const { svg } of items) {
+		const vb = parseViewBox(svg.properties?.viewBox);
+		if (vb)
+			viewBoxes.push(vb);
+	}
+	const combinedVb = combineViewBoxes(viewBoxes) || [0, 0, 100, 100];
+	const centerX = combinedVb[0] + combinedVb[2] / 2;
+
+	const groups: (HastElement | string)[] = [];
+	for (const { layer, svg } of items) {
+		const color = layer.color || '#888888';
+		const shouldMirror = mirrorIds.has(layer.originalFilename);
+		groups.push(wrapLayerChildren(svg.children || [], color, shouldMirror, centerX));
+	}
+
+	const mergedSvg: HastElement = {
+		type: 'element',
+		tagName: 'svg',
+		properties: {
+			xmlns: 'http://www.w3.org/2000/svg',
+			version: '1.1',
+			viewBox: viewBoxString(combinedVb),
+		},
+		children: groups,
+	};
+
+	return {
+		filename: 'Merged.svg',
+		role: 'unknown',
+		content: `<?xml version="1.0" encoding="UTF-8"?>\n${hastToXml(mergedSvg)}\n`,
+	};
 }

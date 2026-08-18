@@ -41,6 +41,11 @@
 						"registerFn": "exportCurrentBoardToSvg"
 					},
 					{
+						"id": "ExportCurrentBoardToSvgCustom",
+						"title": "Export Current Board to SVG (Custom)...",
+						"registerFn": "exportCurrentBoardToSvgCustom"
+					},
+					{
 						"id": "ExportAllBoardsToSvg",
 						"title": "Export All Boards to SVG...",
 						"registerFn": "exportAllBoardsToSvg"

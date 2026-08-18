@@ -4,6 +4,7 @@
  * 流程：`getGerberFile` → JSZip 解压 → tracespace 解析/铺铜 → 自定义 SVG 拼装 → ZIP 打包。
  */
 
+import type { RenderOptions } from './gerber-render.ts';
 import extensionConfig from '../extension.json' with { type: 'json' };
 import { renderGerberLayersToSvgs } from './gerber-render.ts';
 import { collectGerberSources } from './gerber-source.ts';
@@ -12,7 +13,25 @@ import { buildZipBlobFromText } from './zip-builder.ts';
 
 declare const eda: {
 	sys_Message: { showToastMessage: (msg: string) => void };
-	sys_Dialog: { showInformationMessage: (title: string, msg: string) => void };
+	sys_Dialog: {
+		showInformationMessage: (title: string, msg: string) => void;
+		showSelectDialog: <T extends boolean>(
+			options: Array<{ value: string; displayContent: string }>,
+			beforeContent: string,
+			afterContent: string,
+			title: string,
+			defaultOption: T extends true ? string[] : string,
+			multiple: T,
+			callbackFn: (value: T extends true ? string[] : string) => void,
+		) => void;
+		showConfirmationMessage: (
+			content: string,
+			title?: string,
+			mainButtonTitle?: string,
+			buttonTitle?: string,
+			callbackFn?: (mainButtonClicked: boolean) => void,
+		) => void;
+	};
 	sys_I18n: { text: (key: string, fallback?: string, ...args: unknown[]) => string };
 	sys_FileSystem: { saveFile: (blob: Blob, name: string) => Promise<boolean> };
 	dmt_SelectControl: { getCurrentDocumentInfo: () => Promise<{ documentType?: number } | null> };
@@ -117,6 +136,37 @@ async function exportOneBoard(boardName: string, pcbName: string | null): Promis
 	return { zipName, blob, fileCount: rendered.length };
 }
 
+function showSelectDialogAsync(
+	options: Array<{ value: string; displayContent: string }>,
+	title: string,
+	defaultOption: string[],
+): Promise<string[]> {
+	return new Promise((resolve) => {
+		eda.sys_Dialog.showSelectDialog(
+			options,
+			'',
+			'',
+			title,
+			defaultOption,
+			true,
+			(value) => { resolve((value as string[]) || []); },
+		);
+	});
+}
+
+function showConfirmationMessageAsync(
+	content: string,
+	title: string,
+	mainButtonTitle = '确定',
+	buttonTitle = '取消',
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		eda.sys_Dialog.showConfirmationMessage(content, title, mainButtonTitle, buttonTitle, (clicked) => {
+			resolve(clicked);
+		});
+	});
+}
+
 export function activate(_status?: 'onStartupFinished', _arg?: string): void {
 	// no-op
 }
@@ -147,6 +197,79 @@ export async function exportCurrentBoardToSvg(): Promise<void> {
 	}
 	catch (e) {
 		console.error('[export-pcb-svg] exportCurrentBoardToSvg failed:', e);
+		eda.sys_Message.showToastMessage(MESSAGES.exportFailed(String((e as Error)?.message ?? e)));
+	}
+}
+
+export async function exportCurrentBoardToSvgCustom(): Promise<void> {
+	try {
+		if (!(await checkPcbActive())) {
+			eda.sys_Dialog.showInformationMessage('', t(MESSAGES.openPcbFirst, MESSAGES.openPcbFirst));
+			return;
+		}
+		const { boardName, pcbName } = await getBoardNameInfo();
+		eda.sys_Message.showToastMessage(t(MESSAGES.collecting, MESSAGES.collecting));
+
+		const allLayers = await collectGerberSources();
+		console.log(`[export-pcb-svg] custom step: layers=${allLayers.length}`);
+		if (allLayers.length === 0) {
+			eda.sys_Dialog.showInformationMessage('', t(MESSAGES.noLayers, MESSAGES.noLayers));
+			return;
+		}
+
+		const layerOptions = allLayers.map((l, i) => ({
+			value: String(i),
+			displayContent: `${l.layerName} (${l.originalFilename})`,
+		}));
+		const selectedIndexes = await showSelectDialogAsync(
+			layerOptions,
+			'选择要导出的 Gerber 层',
+			allLayers.map((_, i) => String(i)),
+		);
+		if (!selectedIndexes || selectedIndexes.length === 0)
+			return;
+
+		const selectedLayers = selectedIndexes.map(idx => allLayers[Number(idx)]).filter(Boolean);
+		const mirrorOptions = selectedLayers.map(l => ({
+			value: l.originalFilename,
+			displayContent: `${l.layerName} (${l.originalFilename})`,
+		}));
+		const mirroredIds = await showSelectDialogAsync(
+			mirrorOptions,
+			'选择需要水平镜像的层（可选）',
+			[],
+		);
+
+		const merge = await showConfirmationMessageAsync(
+			'选择导出模式：合并为一个 SVG，或独立导出每个层？',
+			'导出模式',
+			'合并导出',
+			'独立导出',
+		);
+
+		const pourById = await collectPourNets();
+		console.log(`[export-pcb-svg] custom step: selected=${selectedLayers.length}, mirror=${(mirroredIds || []).length}, merge=${merge}`);
+		const renderOptions: RenderOptions = {
+			merge,
+			mirrorLayerIds: new Set(mirroredIds || []),
+		};
+		const rendered = await renderGerberLayersToSvgs(selectedLayers, pourById, renderOptions);
+
+		const fileMap: Record<string, string> = {};
+		for (const f of rendered)
+			fileMap[f.filename] = f.content;
+		const blob = await buildZipBlobFromText(fileMap);
+
+		const parts = ['SVG', sanitizeFilename(boardName)];
+		if (pcbName)
+			parts.push(sanitizeFilename(pcbName));
+		const zipName = `${parts.join('_')}.zip`;
+
+		await eda.sys_FileSystem.saveFile(blob, zipName);
+		eda.sys_Message.showToastMessage(MESSAGES.exportedForBoard(rendered.length, boardName));
+	}
+	catch (e) {
+		console.error('[export-pcb-svg] exportCurrentBoardToSvgCustom failed:', e);
 		eda.sys_Message.showToastMessage(MESSAGES.exportFailed(String((e as Error)?.message ?? e)));
 	}
 }
