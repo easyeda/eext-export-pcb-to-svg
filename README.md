@@ -48,10 +48,10 @@ SVG_<板子名称>_<PCB文件名>.zip
 
 ## 菜单项
 
-- `PCB` 编辑器菜单 → **Export PCB to SVG**
-  - **Export Current Board to SVG...** — 导出当前打开的板子（全部层，不镜像，独立 SVG）
-  - **Export Current Board to SVG (Custom)...** — 自定义导出：勾选层、设置镜像、合并/独立导出
-  - **Export All Boards to SVG...** — 导出工程下所有板子
+- `PCB` 编辑器菜单 → **导出 PCB 为 SVG**
+  - **导出当前板子为 SVG...** — 导出当前打开的板子（全部层，不镜像，独立 SVG）
+  - **导出当前板子为 SVG（自定义）...** — 自定义导出：勾选层、设置镜像、合并/独立导出
+  - **导出所有板子为 SVG...** — 导出工程下所有板子
 
 ## 开发
 

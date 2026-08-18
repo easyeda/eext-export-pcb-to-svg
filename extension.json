@@ -33,21 +33,21 @@
 		"pcb": [
 			{
 				"id": "exportPcbSvgPcbMenu",
-				"title": "Export PCB to SVG",
+				"title": "导出 PCB 为 SVG",
 				"menuItems": [
 					{
 						"id": "ExportCurrentBoardToSvg",
-						"title": "Export Current Board to SVG...",
+						"title": "导出当前板子为 SVG...",
 						"registerFn": "exportCurrentBoardToSvg"
 					},
 					{
 						"id": "ExportCurrentBoardToSvgCustom",
-						"title": "Export Current Board to SVG (Custom)...",
+						"title": "导出当前板子为 SVG（自定义）...",
 						"registerFn": "exportCurrentBoardToSvgCustom"
 					},
 					{
 						"id": "ExportAllBoardsToSvg",
-						"title": "Export All Boards to SVG...",
+						"title": "导出所有板子为 SVG...",
 						"registerFn": "exportAllBoardsToSvg"
 					}
 				]
