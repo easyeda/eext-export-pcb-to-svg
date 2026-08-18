@@ -61,16 +61,16 @@ function t(key: string, fallback: string, ...args: unknown[]): string {
 }
 
 const MESSAGES = {
-	openPcbFirst: 'Please open a PCB document first.',
-	noLayers: 'No Gerber layers found in the export bundle.',
-	noBoards: 'No boards found in the current project.',
-	collecting: 'Exporting Gerber, please wait...',
-	menuHint: 'Please open the PCB document and use the Export PCB to SVG menu.',
-	exportedForBoard: (count: number, board: string) => `Exported ${count} SVG file(s) for ${board}.`,
-	exportedBoards: (count: number) => `Exported ${count} board(s).`,
-	exportFailed: (reason: string) => `Export failed: ${reason}`,
-	aboutTitle: (version: string) => `Export PCB to SVG v${version}`,
-	about: 'About',
+	openPcbFirst: '请先打开 PCB 文档。',
+	noLayers: '导出包中没有找到 Gerber 层。',
+	noBoards: '当前工程中没有找到板子。',
+	collecting: '正在导出 Gerber，请稍候...',
+	menuHint: '请打开 PCB 文档并使用“导出 PCB 为 SVG”菜单。',
+	exportedForBoard: (count: number, board: string) => `已为 ${board} 导出 ${count} 个 SVG 文件。`,
+	exportedBoards: (count: number) => `已导出 ${count} 个板子。`,
+	exportFailed: (reason: string) => `导出失败：${reason}`,
+	aboutTitle: (version: string) => `导出 PCB 为 SVG v${version}`,
+	about: '关于',
 } as const;
 
 async function checkPcbActive(): Promise<boolean> {
@@ -146,7 +146,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 		let resolved = false;
 
 		function cleanup() {
-			window.removeEventListener('message', onMessage);
+			globalThis.removeEventListener?.('message', onMessage);
 			eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
 		}
 
@@ -159,7 +159,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 					return;
 				ready = true;
 				// 查找所有 iframe，把 init 数据发给目标窗口
-				const frames = document.querySelectorAll('iframe');
+				const frames = globalThis.document?.querySelectorAll('iframe') || [];
 				for (const frame of frames) {
 					try {
 						frame.contentWindow?.postMessage({ type: 'init', layers }, '*');
@@ -187,7 +187,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 			}
 		}
 
-		window.addEventListener('message', onMessage);
+		globalThis.addEventListener?.('message', onMessage);
 		eda.sys_IFrame.openIFrame('/iframe/custom-export.html', 520, 520, iframeId, {
 			title: '自定义导出',
 			buttonCallbackFn: (button) => {
