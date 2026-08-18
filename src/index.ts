@@ -13,24 +13,19 @@ import { buildZipBlobFromText } from './zip-builder.ts';
 
 declare const eda: {
 	sys_Message: { showToastMessage: (msg: string) => void };
-	sys_Dialog: {
-		showInformationMessage: (title: string, msg: string) => void;
-		showSelectDialog: <T extends boolean>(
-			options: Array<{ value: string; displayContent: string }>,
-			beforeContent: string,
-			afterContent: string,
-			title: string,
-			defaultOption: T extends true ? string[] : string,
-			multiple: T,
-			callbackFn: (value: T extends true ? string[] : string) => void,
-		) => void;
-		showConfirmationMessage: (
-			content: string,
-			title?: string,
-			mainButtonTitle?: string,
-			buttonTitle?: string,
-			callbackFn?: (mainButtonClicked: boolean) => void,
-		) => void;
+	sys_Dialog: { showInformationMessage: (title: string, msg: string) => void };
+	sys_IFrame: {
+		openIFrame: (
+			htmlFileName: string,
+			width?: number,
+			height?: number,
+			id?: string,
+			props?: {
+				title?: string;
+				buttonCallbackFn?: (button: 'close' | 'minimize' | 'maximize') => void;
+			},
+		) => Promise<boolean>;
+		closeIFrame: (id?: string) => Promise<boolean>;
 	};
 	sys_I18n: { text: (key: string, fallback?: string, ...args: unknown[]) => string };
 	sys_FileSystem: { saveFile: (blob: Blob, name: string) => Promise<boolean> };
@@ -136,35 +131,76 @@ async function exportOneBoard(boardName: string, pcbName: string | null): Promis
 	return { zipName, blob, fileCount: rendered.length };
 }
 
-function showSelectDialogAsync(
-	options: Array<{ value: string; displayContent: string }>,
-	title: string,
-	defaultOption: string[],
-): Promise<string[]> {
-	return new Promise((resolve) => {
-		eda.sys_Dialog.showSelectDialog(
-			options,
-			'',
-			'',
-			title,
-			defaultOption,
-			true,
-			(value) => { resolve((value as string[]) || []); },
-		);
-	});
+interface CustomExportResult {
+	selected: string[];
+	mirrored: string[];
+	merge: boolean;
 }
 
-function showConfirmationMessageAsync(
-	content: string,
-	title: string,
-	mainButtonTitle = '确定',
-	buttonTitle = '取消',
-): Promise<boolean> {
-	return new Promise((resolve) => {
-		eda.sys_Dialog.showConfirmationMessage(content, title, mainButtonTitle, buttonTitle, (clicked) => {
-			resolve(clicked);
+async function showCustomExportDialog(layers: Array<{ originalFilename: string; layerName: string }>): Promise<CustomExportResult | null> {
+	const iframeId = 'exportPcbSvgCustomDialog';
+	await eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
+
+	const result = await new Promise<CustomExportResult | null>((resolve) => {
+		let ready = false;
+		let resolved = false;
+
+		function cleanup() {
+			window.removeEventListener('message', onMessage);
+			eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
+		}
+
+		function onMessage(e: MessageEvent) {
+			const data = e.data as { type?: string; selected?: string[]; mirrored?: string[]; merge?: boolean } | undefined;
+			if (!data || typeof data !== 'object')
+				return;
+			if (data.type === 'ready') {
+				if (ready)
+					return;
+				ready = true;
+				// 查找所有 iframe，把 init 数据发给目标窗口
+				const frames = document.querySelectorAll('iframe');
+				for (const frame of frames) {
+					try {
+						frame.contentWindow?.postMessage({ type: 'init', layers }, '*');
+					}
+					catch {}
+				}
+			}
+			else if (data.type === 'result') {
+				if (resolved)
+					return;
+				resolved = true;
+				resolve({
+					selected: Array.isArray(data.selected) ? data.selected : [],
+					mirrored: Array.isArray(data.mirrored) ? data.mirrored : [],
+					merge: !!data.merge,
+				});
+				cleanup();
+			}
+			else if (data.type === 'cancel') {
+				if (resolved)
+					return;
+				resolved = true;
+				resolve(null);
+				cleanup();
+			}
+		}
+
+		window.addEventListener('message', onMessage);
+		eda.sys_IFrame.openIFrame('/iframe/custom-export.html', 520, 520, iframeId, {
+			title: '自定义导出',
+			buttonCallbackFn: (button) => {
+				if (button === 'close' && !resolved) {
+					resolved = true;
+					resolve(null);
+					cleanup();
+				}
+			},
 		});
 	});
+
+	return result;
 }
 
 export function activate(_status?: 'onStartupFinished', _arg?: string): void {
@@ -217,41 +253,22 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 			return;
 		}
 
-		const layerOptions = allLayers.map((l, i) => ({
-			value: String(i),
-			displayContent: `${l.layerName} (${l.originalFilename})`,
-		}));
-		const selectedIndexes = await showSelectDialogAsync(
-			layerOptions,
-			'选择要导出的 Gerber 层',
-			allLayers.map((_, i) => String(i)),
-		);
-		if (!selectedIndexes || selectedIndexes.length === 0)
+		const dialogResult = await showCustomExportDialog(allLayers.map(l => ({
+			originalFilename: l.originalFilename,
+			layerName: l.layerName,
+		})));
+		if (!dialogResult)
 			return;
 
-		const selectedLayers = selectedIndexes.map(idx => allLayers[Number(idx)]).filter(Boolean);
-		const mirrorOptions = selectedLayers.map(l => ({
-			value: l.originalFilename,
-			displayContent: `${l.layerName} (${l.originalFilename})`,
-		}));
-		const mirroredIds = await showSelectDialogAsync(
-			mirrorOptions,
-			'选择需要水平镜像的层（可选）',
-			[],
-		);
-
-		const merge = await showConfirmationMessageAsync(
-			'选择导出模式：合并为一个 SVG，或独立导出每个层？',
-			'导出模式',
-			'合并导出',
-			'独立导出',
-		);
+		const selectedLayers = allLayers.filter(l => dialogResult.selected.includes(l.originalFilename));
+		if (selectedLayers.length === 0)
+			return;
 
 		const pourById = await collectPourNets();
-		console.log(`[export-pcb-svg] custom step: selected=${selectedLayers.length}, mirror=${(mirroredIds || []).length}, merge=${merge}`);
+		console.log(`[export-pcb-svg] custom step: selected=${selectedLayers.length}, mirror=${dialogResult.mirrored.length}, merge=${dialogResult.merge}`);
 		const renderOptions: RenderOptions = {
-			merge,
-			mirrorLayerIds: new Set(mirroredIds || []),
+			merge: dialogResult.merge,
+			mirrorLayerIds: new Set(dialogResult.mirrored),
 		};
 		const rendered = await renderGerberLayersToSvgs(selectedLayers, pourById, renderOptions);
 

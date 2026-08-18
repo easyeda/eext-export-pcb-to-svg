@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+	<title>自定义导出</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			padding: 16px;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			font-size: 14px;
+			color: #333;
+			background: #fff;
+		}
+		h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+		.table-wrap {
+			border: 1px solid #e0e0e0;
+			border-radius: 4px;
+			overflow: hidden;
+			margin-bottom: 12px;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		thead {
+			background: #f5f5f5;
+			position: sticky;
+			top: 0;
+			z-index: 1;
+		}
+		th {
+			padding: 8px 12px;
+			text-align: left;
+			font-weight: 600;
+			border-bottom: 1px solid #e0e0e0;
+		}
+		tbody {
+			display: block;
+			max-height: 320px;
+			overflow-y: auto;
+		}
+		thead, tbody tr {
+			display: table;
+			width: 100%;
+			table-layout: fixed;
+		}
+		td {
+			padding: 8px 12px;
+			border-bottom: 1px solid #f0f0f0;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		tbody tr:nth-child(even) { background: #fafafa; }
+		tbody tr:hover { background: #f0f7ff; }
+		.col-export { width: 60%; }
+		.col-mirror { width: 40%; }
+		label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+		input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+		.mode {
+			margin: 12px 0;
+			padding: 10px 12px;
+			border: 1px solid #e0e0e0;
+			border-radius: 4px;
+			background: #fafafa;
+		}
+		.mode label { margin-right: 20px; }
+		.buttons {
+			display: flex;
+			justify-content: flex-end;
+			gap: 10px;
+			margin-top: 16px;
+		}
+		button {
+			padding: 8px 18px;
+			border: 1px solid #d9d9d9;
+			border-radius: 4px;
+			background: #fff;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		button.primary {
+			background: #1890ff;
+			color: #fff;
+			border-color: #1890ff;
+		}
+		button:hover { opacity: 0.85; }
+		.empty { padding: 20px; text-align: center; color: #999; }
+	</style>
+</head>
+<body>
+	<h3>选择层</h3>
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th class="col-export">导出层</th>
+					<th class="col-mirror">镜像</th>
+				</tr>
+			</thead>
+			<tbody id="layerList"></tbody>
+		</table>
+	</div>
+
+	<div class="mode">
+		<label><input type="radio" name="exportMode" value="separate" checked /> 独立导出</label>
+		<label><input type="radio" name="exportMode" value="merge" /> 合并导出</label>
+	</div>
+
+	<div class="buttons">
+		<button id="cancelBtn">取消</button>
+		<button id="okBtn" class="primary">确定</button>
+	</div>
+
+	<script>
+		let layers = [];
+
+		function render() {
+			const tbody = document.getElementById('layerList');
+			if (!layers.length) {
+				tbody.innerHTML = '<tr><td colspan="2" class="empty">没有可用的层</td></tr>';
+				return;
+			}
+			tbody.innerHTML = layers.map((l, i) => `
+				<tr>
+					<td class="col-export">
+						<label>
+							<input type="checkbox" class="export-cb" data-idx="${i}" checked />
+							<span title="${escapeHtml(l.layerName)} (${escapeHtml(l.originalFilename)})">${escapeHtml(l.layerName)}</span>
+						</label>
+					</td>
+					<td class="col-mirror">
+						<label>
+							<input type="checkbox" class="mirror-cb" data-idx="${i}" />
+							<span>镜像</span>
+						</label>
+					</td>
+				</tr>
+			`).join('');
+		}
+
+		function escapeHtml(s) {
+			return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+		}
+
+		function post(type, payload) {
+			window.parent.postMessage({ type, ...payload }, '*');
+		}
+
+		window.addEventListener('message', (e) => {
+			if (!e.data || typeof e.data !== 'object') return;
+			if (e.data.type === 'init') {
+				layers = Array.isArray(e.data.layers) ? e.data.layers : [];
+				render();
+			}
+		});
+
+		document.getElementById('okBtn').addEventListener('click', () => {
+			const selected = [];
+			const mirrored = [];
+			document.querySelectorAll('.export-cb').forEach((cb) => {
+				const idx = Number(cb.dataset.idx);
+				if (cb.checked && layers[idx]) selected.push(layers[idx].originalFilename);
+			});
+			document.querySelectorAll('.mirror-cb').forEach((cb) => {
+				const idx = Number(cb.dataset.idx);
+				if (cb.checked && layers[idx]) mirrored.push(layers[idx].originalFilename);
+			});
+			const merge = document.querySelector('input[name="exportMode"]:checked')?.value === 'merge';
+			post('result', { selected, mirrored, merge });
+		});
+
+		document.getElementById('cancelBtn').addEventListener('click', () => {
+			post('cancel', {});
+		});
+
+		post('ready', {});
+	</script>
+</body>
+</html>
