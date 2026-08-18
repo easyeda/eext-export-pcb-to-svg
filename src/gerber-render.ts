@@ -500,6 +500,13 @@ function renderMergedSvg(
 			xmlns: 'http://www.w3.org/2000/svg',
 			version: '1.1',
 			viewBox: viewBoxString(combinedVb),
+			fill: 'currentColor',
+			stroke: 'currentColor',
+			strokeLineCap: 'round',
+			strokeLineJoin: 'round',
+			strokeWidth: '0',
+			fillRule: 'evenodd',
+			clipRule: 'evenodd',
 		},
 		children: groups,
 	};

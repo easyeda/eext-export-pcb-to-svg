@@ -13,23 +13,32 @@
 			font-size: 14px;
 			color: #333;
 			background: #fff;
+			display: flex;
+			flex-direction: column;
+			height: 100vh;
 		}
-		h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+		h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; flex-shrink: 0; }
 		.table-wrap {
 			border: 1px solid #e0e0e0;
 			border-radius: 4px;
 			overflow: hidden;
 			margin-bottom: 12px;
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
 		}
 		table {
 			width: 100%;
 			border-collapse: collapse;
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
 		}
 		thead {
 			background: #f5f5f5;
-			position: sticky;
-			top: 0;
-			z-index: 1;
+			flex-shrink: 0;
 		}
 		th {
 			padding: 8px 12px;
@@ -37,10 +46,11 @@
 			font-weight: 600;
 			border-bottom: 1px solid #e0e0e0;
 		}
+		th label { font-weight: 600; }
 		tbody {
-			display: block;
-			max-height: 320px;
+			flex: 1;
 			overflow-y: auto;
+			min-height: 0;
 		}
 		thead, tbody tr {
 			display: table;
@@ -61,18 +71,20 @@
 		label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
 		input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
 		.mode {
-			margin: 12px 0;
+			margin: 0;
 			padding: 10px 12px;
 			border: 1px solid #e0e0e0;
 			border-radius: 4px;
 			background: #fafafa;
+			flex-shrink: 0;
 		}
-		.mode label { margin-right: 20px; }
+		.mode label { display: inline-flex; margin-right: 20px; }
 		.buttons {
 			display: flex;
 			justify-content: flex-end;
 			gap: 10px;
-			margin-top: 16px;
+			margin-top: 12px;
+			flex-shrink: 0;
 		}
 		button {
 			padding: 8px 18px;
@@ -97,8 +109,18 @@
 		<table>
 			<thead>
 				<tr>
-					<th class="col-export">导出层</th>
-					<th class="col-mirror">镜像</th>
+					<th class="col-export">
+						<label>
+							<input type="checkbox" id="selectAllExport" />
+							<span>导出层</span>
+						</label>
+					</th>
+					<th class="col-mirror">
+						<label>
+							<input type="checkbox" id="selectAllMirror" />
+							<span>镜像</span>
+						</label>
+					</th>
 				</tr>
 			</thead>
 			<tbody id="layerList"></tbody>
@@ -118,28 +140,36 @@
 	<script>
 		let layers = [];
 
+		function displayNameOf(l) {
+			return l.displayName || l.layerName || l.originalFilename || '';
+		}
+
 		function render() {
 			const tbody = document.getElementById('layerList');
 			if (!layers.length) {
 				tbody.innerHTML = '<tr><td colspan="2" class="empty">没有可用的层</td></tr>';
 				return;
 			}
-			tbody.innerHTML = layers.map((l, i) => `
-				<tr>
-					<td class="col-export">
-						<label>
-							<input type="checkbox" class="export-cb" data-idx="${i}" checked />
-							<span title="${escapeHtml(l.layerName)} (${escapeHtml(l.originalFilename)})">${escapeHtml(l.layerName)}</span>
-						</label>
-					</td>
-					<td class="col-mirror">
-						<label>
-							<input type="checkbox" class="mirror-cb" data-idx="${i}" />
-							<span>镜像</span>
-						</label>
-					</td>
-				</tr>
-			`).join('');
+			tbody.innerHTML = layers.map((l, i) => {
+				const name = displayNameOf(l);
+				return `
+					<tr>
+						<td class="col-export">
+							<label>
+								<input type="checkbox" class="export-cb" data-idx="${i}" checked />
+								<span title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+							</label>
+						</td>
+						<td class="col-mirror">
+							<label>
+								<input type="checkbox" class="mirror-cb" data-idx="${i}" />
+								<span>镜像</span>
+							</label>
+						</td>
+					</tr>
+				`;
+			}).join('');
+			updateSelectAllState();
 		}
 
 		function escapeHtml(s) {
@@ -150,11 +180,32 @@
 			window.parent.postMessage({ type, ...payload }, '*');
 		}
 
+		function updateSelectAllState() {
+			const exportCbs = document.querySelectorAll('.export-cb');
+			const mirrorCbs = document.querySelectorAll('.mirror-cb');
+			document.getElementById('selectAllExport').checked = exportCbs.length > 0 && Array.from(exportCbs).every(cb => cb.checked);
+			document.getElementById('selectAllMirror').checked = mirrorCbs.length > 0 && Array.from(mirrorCbs).every(cb => cb.checked);
+		}
+
 		window.addEventListener('message', (e) => {
 			if (!e.data || typeof e.data !== 'object') return;
 			if (e.data.type === 'init') {
 				layers = Array.isArray(e.data.layers) ? e.data.layers : [];
 				render();
+			}
+		});
+
+		document.getElementById('selectAllExport').addEventListener('change', (e) => {
+			document.querySelectorAll('.export-cb').forEach(cb => cb.checked = e.target.checked);
+		});
+
+		document.getElementById('selectAllMirror').addEventListener('change', (e) => {
+			document.querySelectorAll('.mirror-cb').forEach(cb => cb.checked = e.target.checked);
+		});
+
+		document.getElementById('layerList').addEventListener('change', (e) => {
+			if (e.target.classList.contains('export-cb') || e.target.classList.contains('mirror-cb')) {
+				updateSelectAllState();
 			}
 		});
 

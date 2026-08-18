@@ -36,7 +36,7 @@ SVG_<板子名称>_<PCB文件名>.zip
 
 例如 `SVG_MyBoard_PCB1_V1.0.zip`。
 
-合并导出时，ZIP 内仅含一个 `Merged.svg`；独立导出时，ZIP 内为各层 SVG。
+合并导出时，直接输出一个 SVG 文件，命名为 `SVG_<板子名>_<PCB文件名>_Merged.svg`；独立导出时，输出包含各层 SVG 的 ZIP 压缩包。
 
 ## 安装与使用
 

@@ -255,7 +255,7 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 
 		const dialogResult = await showCustomExportDialog(allLayers.map(l => ({
 			originalFilename: l.originalFilename,
-			layerName: l.layerName,
+			displayName: l.originalFilename.replace(/^Gerber_/i, ''),
 		})));
 		if (!dialogResult)
 			return;
@@ -272,18 +272,25 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 		};
 		const rendered = await renderGerberLayersToSvgs(selectedLayers, pourById, renderOptions);
 
-		const fileMap: Record<string, string> = {};
-		for (const f of rendered)
-			fileMap[f.filename] = f.content;
-		const blob = await buildZipBlobFromText(fileMap);
-
-		const parts = ['SVG', sanitizeFilename(boardName)];
+		const nameParts = ['SVG', sanitizeFilename(boardName)];
 		if (pcbName)
-			parts.push(sanitizeFilename(pcbName));
-		const zipName = `${parts.join('_')}.zip`;
+			nameParts.push(sanitizeFilename(pcbName));
 
-		await eda.sys_FileSystem.saveFile(blob, zipName);
-		eda.sys_Message.showToastMessage(MESSAGES.exportedForBoard(rendered.length, boardName));
+		if (dialogResult.merge && rendered.length === 1) {
+			const svgName = `${nameParts.join('_')}_Merged.svg`;
+			const blob = new Blob([rendered[0].content], { type: 'image/svg+xml' });
+			await eda.sys_FileSystem.saveFile(blob, svgName);
+			eda.sys_Message.showToastMessage(MESSAGES.exportedForBoard(1, `${boardName} (Merged)`));
+		}
+		else {
+			const fileMap: Record<string, string> = {};
+			for (const f of rendered)
+				fileMap[f.filename] = f.content;
+			const blob = await buildZipBlobFromText(fileMap);
+			const zipName = `${nameParts.join('_')}.zip`;
+			await eda.sys_FileSystem.saveFile(blob, zipName);
+			eda.sys_Message.showToastMessage(MESSAGES.exportedForBoard(rendered.length, boardName));
+		}
 	}
 	catch (e) {
 		console.error('[export-pcb-svg] exportCurrentBoardToSvgCustom failed:', e);

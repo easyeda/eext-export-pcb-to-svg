@@ -21,7 +21,8 @@ const JSZip = require('jszip');
 
 const bridgePort = Number(process.env.BRIDGE_PORT || 49620);
 const CHUNK_BYTES = 96 * 1024;
-const OUT_ZIP = path.join(__dirname, '..', 'verify-out.zip');
+const OUT_DIR = path.join(__dirname, '..', 'verify-out');
+const OUT_ZIP = path.join(OUT_DIR, 'verify-out.zip');
 
 function execute(code) {
 	return new Promise((resolve, reject) => {
@@ -107,6 +108,7 @@ function assert(cond, msg) {
 		batch++;
 		console.log('batch', batch, ':', got.length, '/', offset, '/', total);
 	}
+	fs.mkdirSync(OUT_DIR, { recursive: true });
 	fs.writeFileSync(OUT_ZIP, buf);
 	console.log(`--- wrote ${OUT_ZIP} (${buf.length} bytes) ---\n`);
 
