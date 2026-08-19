@@ -3,6 +3,7 @@
  * 解压后按 JLCPCB 命名规范归类到各层角色。
  */
 
+import { createParser } from '@tracespace/parser';
 import JSZip from 'jszip';
 
 export type GerberLayerRole
@@ -120,6 +121,21 @@ function looksLikeGerber(text: string): boolean {
 	return false;
 }
 
+/** 用 tracespace parser 实际尝试解析；对内容特征不明显的自定义层做最后兜底。 */
+function canParseAsGerber(text: string): boolean {
+	if (!text || !text.trim())
+		return false;
+	try {
+		const parser = createParser();
+		parser.feed(text.slice(0, 65536));
+		parser.result();
+		return true;
+	}
+	catch {
+		return false;
+	}
+}
+
 /** 决定每个 role 的配色（取自 EDA 层表） */
 function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilename: string): { name: string; color: string } {
 	const norm = (s: string) => s.toLowerCase().replace(/[_\s]+/g, '');
@@ -209,6 +225,7 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	const buf = await file.arrayBuffer();
 	const zip = await JSZip.loadAsync(buf);
 	const out: GerberLayerText[] = [];
+	const skipped: Array<{ filename: string; reason: string }> = [];
 	for (const entryName of Object.keys(zip.files)) {
 		const entry = zip.files[entryName];
 		if (entry.dir)
@@ -216,16 +233,21 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 		const filename = entryName.split('/').pop() || entryName;
 		const upper = filename.toUpperCase();
 		// JSON 文件直接跳过（FlyingProbeTesting 等 EDA 附属产物）
-		if (upper.endsWith('.JSON'))
+		if (upper.endsWith('.JSON')) {
+			skipped.push({ filename, reason: 'json' });
 			continue;
+		}
 		const isDrillExt = upper.endsWith('.DRL');
 		const isTxtExt = upper.endsWith('.TXT');
 		const text = await entry.async('string');
-		if (!text || !text.trim())
+		if (!text || !text.trim()) {
+			skipped.push({ filename, reason: 'empty' });
 			continue;
+		}
 		// .TXT 既可能是 Excellon 也可能是说明文档，必须嗅探内容
 		const contentIsDrill = looksLikeDrill(text);
 		const contentIsGerber = looksLikeGerber(text);
+		const parseable = contentIsGerber || contentIsDrill || canParseAsGerber(text);
 		let role: GerberLayerRole;
 		if (isDrillExt || (isTxtExt && contentIsDrill))
 			role = 'drill';
@@ -235,11 +257,15 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 		if (role === 'unknown' && contentIsDrill)
 			role = 'drill';
 		// .TXT 既不是 Excellon 也不是 Gerber → 说明文档之类的，丢掉
-		if (isTxtExt && !contentIsDrill && !contentIsGerber)
+		if (isTxtExt && !contentIsDrill && !contentIsGerber) {
+			skipped.push({ filename, reason: 'txt-not-gerber' });
 			continue;
+		}
 		// 既非 Gerber 也非 Excellon（纯文本 / JSON / 图像等），丢掉
-		if (role === 'unknown' && !contentIsGerber && !contentIsDrill)
+		if (role === 'unknown' && !parseable) {
+			skipped.push({ filename, reason: 'not-parseable' });
 			continue;
+		}
 		const filetype: 'gerber' | 'excellon' = role === 'drill' || contentIsDrill ? 'excellon' : 'gerber';
 		const { name, color } = pickColor(layers, role, filename);
 		out.push({
@@ -251,6 +277,8 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 			originalFilename: filename,
 		});
 	}
+	console.log('[export-pcb-svg] gerber-source: included', out.map(l => l.originalFilename));
+	console.log('[export-pcb-svg] gerber-source: skipped', skipped);
 
 	// 同名层（如多份钻孔）追加原始文件名前缀，避免 .svg 重名覆盖
 	const seen = new Map<string, number>();
