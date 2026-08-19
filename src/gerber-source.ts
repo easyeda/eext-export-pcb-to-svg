@@ -43,7 +43,7 @@ declare const eda: {
 		getGerberFile: (
 			fileName?: string,
 			colorSilkscreen?: boolean,
-			unit?: number,
+			unit?: 'mm' | 'inch' | 'mil' | 'in' | number,
 			digitalFormat?: { integerNumber: number; decimalNumber: number },
 			other?: {
 				metallicDrillingInformation: boolean;
@@ -226,7 +226,7 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	let file = await eda.pcb_ManufactureData.getGerberFile(
 		undefined,
 		undefined,
-		0,
+		'mm',
 		{ integerNumber: 4, decimalNumber: 6 },
 		{ metallicDrillingInformation: false, nonMetallicDrillingInformation: false, drillTable: false, flyingProbeTestingFile: false },
 		layerParams,
@@ -236,7 +236,7 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 		file = await eda.pcb_ManufactureData.getGerberFile(
 			undefined,
 			undefined,
-			0,
+			'mm',
 			{ integerNumber: 4, decimalNumber: 6 },
 		);
 	}
