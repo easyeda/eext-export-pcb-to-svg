@@ -6,6 +6,8 @@
 
 ![](images/top.jpg)
 
+![](images/dialog.jpg)
+
 ## 功能特性
 
 - **基于 Gerber/Excellon**：直接消费 `eda.pcb_ManufactureData.getGerberFile()` 返回的 Gerber ZIP，覆盖顶层/底层铜、丝印、阻焊、钢网、内层、边框、机械层、钻孔等所有制造层
