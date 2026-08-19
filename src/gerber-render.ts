@@ -354,6 +354,8 @@ export interface RenderOptions {
 	mirrorLayerIds?: Set<string>;
 	/** 用户自定义层颜色（originalFilename → color），优先级高于 Gerber 层表颜色 */
 	layerColors?: Map<string, string>;
+	/** 用户自定义层不透明度（originalFilename → 0-1） */
+	layerOpacities?: Map<string, number>;
 }
 
 function parseViewBox(vb: string | number[] | undefined): [number, number, number, number] | null {
@@ -390,10 +392,11 @@ function combineViewBoxes(boxes: Array<[number, number, number, number]>): [numb
 	return [minX, minY, maxX - minX, maxY - minY];
 }
 
-/** 把若干子节点包成一层，可选水平镜像。镜像绕该层中心线翻转。 */
+/** 把若干子节点包成一层，可选水平镜像与不透明度。镜像绕该层中心线翻转。 */
 function wrapLayerChildren(
 	children: (HastElement | string)[],
 	color: string,
+	opacity: number,
 	mirror: boolean,
 	centerX: number,
 ): HastElement {
@@ -403,6 +406,8 @@ function wrapLayerChildren(
 		fill: color,
 		stroke: color,
 	};
+	if (opacity < 1)
+		props.opacity = String(opacity);
 	if (transform)
 		props.transform = transform;
 	return { type: 'element', tagName: 'g', properties: props, children };
@@ -422,13 +427,21 @@ export async function renderGerberLayersToSvgs(
 	opts: RenderOptions = {},
 ): Promise<RenderedSvg[]> {
 	const layerColors = opts.layerColors;
-	const layersWithColor = layers.map((l) => {
-		const override = layerColors?.get(l.originalFilename);
-		return override && override !== l.color ? { ...l, color: override } : l;
+	const layerOpacities = opts.layerOpacities;
+	const layersWithStyle = layers.map((l) => {
+		const colorOverride = layerColors?.get(l.originalFilename);
+		const opacityOverride = layerOpacities?.get(l.originalFilename);
+		if (!colorOverride && opacityOverride === undefined)
+			return l;
+		return {
+			...l,
+			color: colorOverride || l.color,
+			opacity: opacityOverride !== undefined ? opacityOverride : l.opacity,
+		};
 	});
 	const rendered: Array<{ ok: true; layer: GerberLayerText; image: ImageTree; svg: HastElement } | { ok: false; content: string; role: GerberLayerText['role']; filename: string }> = [];
-	for (let i = 0; i < layersWithColor.length; i++)
-		rendered.push(await renderLayerToTree(layersWithColor[i]));
+	for (let i = 0; i < layersWithStyle.length; i++)
+		rendered.push(await renderLayerToTree(layersWithStyle[i]));
 
 	// 用"铺铜包围盒中心 ↔ SVG 填充区域中心"聚类推导 complexPolygon 偏移量
 	const pourGeoms = await collectPourGeoms();
@@ -472,9 +485,10 @@ export async function renderGerberLayersToSvgs(
 function renderSingleSvg(layer: GerberLayerText, svg: HastElement, mirrorIds: Set<string>): RenderedSvg {
 	const vb = parseViewBox(svg.properties?.viewBox);
 	const shouldMirror = mirrorIds.has(layer.originalFilename);
-	if (shouldMirror && vb) {
+	const opacity = layer.opacity ?? 1;
+	if (vb && (shouldMirror || opacity < 1)) {
 		const centerX = vb[0] + vb[2] / 2;
-		svg.children = [wrapLayerChildren(svg.children || [], layer.color || '#888888', true, centerX)];
+		svg.children = [wrapLayerChildren(svg.children || [], layer.color || '#888888', opacity, shouldMirror, centerX)];
 	}
 	const xml = hastToXml(svg);
 	return {
@@ -503,8 +517,9 @@ function renderMergedSvg(
 	const groups: (HastElement | string)[] = [];
 	for (const { layer, svg } of renderItems) {
 		const color = layer.color || '#888888';
+		const opacity = layer.opacity ?? 1;
 		const shouldMirror = mirrorIds.has(layer.originalFilename);
-		groups.push(wrapLayerChildren(svg.children || [], color, shouldMirror, centerX));
+		groups.push(wrapLayerChildren(svg.children || [], color, opacity, shouldMirror, centerX));
 	}
 
 	const mergedSvg: HastElement = {

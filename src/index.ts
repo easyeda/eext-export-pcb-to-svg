@@ -136,9 +136,10 @@ interface CustomExportResult {
 	mirrored: string[];
 	merge: boolean;
 	colors: Record<string, string>;
+	opacities: Record<string, number>;
 }
 
-async function showCustomExportDialog(layers: Array<{ originalFilename: string; displayName: string; color: string }>): Promise<CustomExportResult | null> {
+async function showCustomExportDialog(layers: Array<{ originalFilename: string; displayName: string; color: string; opacity: number }>): Promise<CustomExportResult | null> {
 	const iframeId = 'exportPcbSvgCustomDialog';
 	await eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
 
@@ -152,7 +153,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 		}
 
 		function onMessage(e: MessageEvent) {
-			const data = e.data as { type?: string; selected?: string[]; mirrored?: string[]; merge?: boolean; colors?: Record<string, string> } | undefined;
+			const data = e.data as { type?: string; selected?: string[]; mirrored?: string[]; merge?: boolean; colors?: Record<string, string>; opacities?: Record<string, number> } | undefined;
 			if (!data || typeof data !== 'object')
 				return;
 			if (data.type === 'ready') {
@@ -177,6 +178,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 					mirrored: Array.isArray(data.mirrored) ? data.mirrored : [],
 					merge: !!data.merge,
 					colors: data.colors || {},
+					opacities: data.opacities || {},
 					order: Array.isArray(data.order) ? data.order : (Array.isArray(data.selected) ? data.selected : []),
 				});
 				cleanup();
@@ -260,6 +262,7 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 			originalFilename: l.originalFilename,
 			displayName: l.layerName || l.originalFilename.replace(/^Gerber_/i, ''),
 			color: l.color || '#888888',
+			opacity: l.opacity ?? 1,
 		})));
 		if (!dialogResult)
 			return;
@@ -279,10 +282,14 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 		const layerColors = new Map<string, string>();
 		for (const [filename, color] of Object.entries(dialogResult.colors))
 			layerColors.set(filename, color);
+		const layerOpacities = new Map<string, number>();
+		for (const [filename, opacity] of Object.entries(dialogResult.opacities))
+			layerOpacities.set(filename, opacity);
 		const renderOptions: RenderOptions = {
 			merge: dialogResult.merge,
 			mirrorLayerIds: new Set(dialogResult.mirrored),
 			layerColors,
+			layerOpacities,
 		};
 		const rendered = await renderGerberLayersToSvgs(selectedLayers, pourById, renderOptions);
 

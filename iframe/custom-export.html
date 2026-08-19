@@ -72,9 +72,19 @@
 		tbody tr.drag-over { border-top: 2px solid #1890ff; }
 		.col-sort { width: 80px; }
 		.col-color { width: 56px; }
+		.col-opacity { width: 90px; }
 		.col-mirror { width: 72px; text-align: right; }
 		.col-mirror label { justify-content: flex-end; }
-		.col-export { width: calc(100% - 208px); }
+		.col-export { width: calc(100% - 298px); }
+		.opacity-input {
+			width: 60px;
+			height: 20px;
+			padding: 0 4px;
+			border: 1px solid #d9d9d9;
+			border-radius: 3px;
+			font-size: 12px;
+			text-align: center;
+		}
 		.color-swatch {
 			position: relative;
 			width: 28px;
@@ -158,6 +168,7 @@
 				<tr>
 					<th class="col-sort">排序</th>
 						<th class="col-color">颜色</th>
+						<th class="col-opacity">透明度</th>
 					<th class="col-export">
 						<label>
 							<input type="checkbox" id="selectAllExport" />
@@ -193,6 +204,7 @@
 		const mirroredSet = new Set();
 		const layerMap = new Map();
 		const colorMap = new Map();
+		const opacityMap = new Map();
 
 		function displayNameOf(l) {
 			return l.displayName || l.layerName || l.originalFilename || '';
@@ -205,7 +217,7 @@
 		function render() {
 			const tbody = document.getElementById('layerList');
 			if (!layers.length) {
-				tbody.innerHTML = '<tr><td colspan="4" class="empty">没有可用的层</td></tr>';
+				tbody.innerHTML = '<tr><td colspan="5" class="empty">没有可用的层</td></tr>';
 				return;
 			}
 			tbody.innerHTML = order.map((filename, i) => {
@@ -213,6 +225,8 @@
 				if (!l) return '';
 				const name = displayNameOf(l);
 				const color = colorMap.get(filename) || l.color || '#888888';
+				const opacity = opacityMap.get(filename) ?? l.opacity ?? 1;
+				const opacityPercent = Math.round(opacity * 100);
 				return `
 					<tr draggable="true" data-filename="${escapeHtml(filename)}">
 						<td class="col-sort">
@@ -223,6 +237,9 @@
 							<div class="color-swatch" title="点击修改颜色" style="background-color: ${escapeHtml(color)}">
 								<input type="color" class="color-picker" data-filename="${escapeHtml(filename)}" value="${escapeHtml(color)}" />
 							</div>
+						</td>
+						<td class="col-opacity">
+							<input type="number" class="opacity-input" data-filename="${escapeHtml(filename)}" value="${opacityPercent}" min="0" max="100" step="1" title="不透明度百分比" />
 						</td>
 						<td class="col-export">
 							<label>
@@ -303,10 +320,12 @@
 				selectedSet.clear();
 				mirroredSet.clear();
 				colorMap.clear();
+				opacityMap.clear();
 				for (const l of layers) {
 					layerMap.set(l.originalFilename, l);
 					selectedSet.add(l.originalFilename);
 					if (l.color) colorMap.set(l.originalFilename, l.color);
+					if (typeof l.opacity === 'number') opacityMap.set(l.originalFilename, l.opacity);
 				}
 				order = layers.map(l => l.originalFilename);
 				render();
@@ -351,6 +370,14 @@
 				const swatch = e.target.closest('.color-swatch');
 				if (swatch) swatch.style.backgroundColor = value;
 			}
+			else if (e.target.classList.contains('opacity-input')) {
+				const filename = e.target.dataset.filename;
+				let value = Number(e.target.value);
+				if (Number.isNaN(value)) value = 100;
+				value = Math.max(0, Math.min(100, value));
+				opacityMap.set(filename, value / 100);
+				e.target.value = value;
+			}
 		});
 
 		document.getElementById('okBtn').addEventListener('click', () => {
@@ -358,11 +385,14 @@
 			const mirrored = order.filter(f => mirroredSet.has(f));
 			const merge = document.querySelector('input[name="exportMode"]:checked')?.value === 'merge';
 			const colors = {};
+			const opacities = {};
 			for (const filename of selected) {
 				const c = colorMap.get(filename);
 				if (c) colors[filename] = c;
+				const o = opacityMap.get(filename);
+				if (typeof o === 'number') opacities[filename] = o;
 			}
-			post('result', { selected, mirrored, order: selected, merge, colors });
+			post('result', { selected, mirrored, order: selected, merge, colors, opacities });
 		});
 
 		document.getElementById('cancelBtn').addEventListener('click', () => {

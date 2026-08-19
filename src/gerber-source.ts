@@ -25,6 +25,7 @@ export interface GerberLayerText {
 	role: GerberLayerRole;
 	layerName: string;
 	color: string;
+	opacity: number;
 	filetype: 'gerber' | 'excellon';
 	text: string;
 	originalFilename: string;
@@ -34,6 +35,7 @@ interface EdaLayerItem {
 	id: number;
 	name: string;
 	color: string;
+	transparency: number;
 	type: string;
 }
 
@@ -182,8 +184,16 @@ function edaLayerIdFor(role: GerberLayerRole, originalFilename: string): number 
 	}
 }
 
-/** 决定每个 role 的配色（优先按 EDA 层 id 直接取 API 颜色，否则按名称匹配，最后回退默认值） */
-function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilename: string): { name: string; color: string } {
+/** 把 EDA 透明度百分比转为 SVG 不透明度（0-1） */
+function edaTransparencyToOpacity(t: number): number {
+	const v = typeof t === 'number' ? t : Number(t);
+	if (Number.isNaN(v))
+		return 1;
+	return Math.max(0, Math.min(1, 1 - v / 100));
+}
+
+/** 决定每个 role 的配色与透明度（优先按 EDA 层 id 直接取 API 值，否则按名称匹配，最后回退默认值） */
+function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilename: string): { name: string; color: string; opacity: number } {
 	const norm = (s: string) => s.toLowerCase().replace(/[_\s]+/g, '');
 	const ext = (originalFilename.split('.').pop() || '').toLowerCase();
 	const colorByRole: Record<GerberLayerRole, string> = {
@@ -250,14 +260,19 @@ function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilena
 			return false;
 		});
 	}
-	if (matchLayer)
-		return { name: matchLayer.name, color: matchLayer.color || colorByRole[role] };
+	if (matchLayer) {
+		return {
+			name: matchLayer.name,
+			color: matchLayer.color || colorByRole[role],
+			opacity: edaTransparencyToOpacity(matchLayer.transparency),
+		};
+	}
 	// mechanical / 自定义层没有匹配到 EDA 层表时，用文件名主干作为可读名称
 	if (role === 'mechanical') {
 		const stem = originalFilename.replace(/\.[^.]+$/, '').replace(/^Gerber_/i, '').replace(/[_-]+/g, ' ').trim();
-		return { name: stem || nameByRole[role], color: colorByRole[role] };
+		return { name: stem || nameByRole[role], color: colorByRole[role], opacity: 1 };
 	}
-	return { name: nameByRole[role], color: colorByRole[role] };
+	return { name: nameByRole[role], color: colorByRole[role], opacity: 1 };
 }
 
 /**
@@ -369,11 +384,12 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 			continue;
 		}
 		const filetype: 'gerber' | 'excellon' = role === 'drill' || contentIsDrill ? 'excellon' : 'gerber';
-		const { name, color } = pickColor(layers, role, filename);
+		const { name, color, opacity } = pickColor(layers, role, filename);
 		out.push({
 			role,
 			layerName: role === 'inner' ? `Inner${(filename.split('.').pop() || '').replace(/^G/i, '')}` : name,
 			color,
+			opacity,
 			filetype,
 			text,
 			originalFilename: filename,
