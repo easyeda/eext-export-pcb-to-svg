@@ -37,6 +37,8 @@ interface EdaLayerItem {
 	type: string;
 }
 
+type GerberObject = 'Pad' | 'Via' | 'Track' | 'Text' | 'Image' | 'Dimension' | 'BoardOutline' | 'BoardCutout' | 'CopperFilled' | 'SolidRegion' | 'FPCStiffener' | 'Line' | 'PlaneZone' | 'ComponentProperty' | 'ComponentSilkscreen' | 'TearDrop';
+
 declare const eda: {
 	pcb_Layer: { getAllLayers: () => Promise<EdaLayerItem[]> };
 	pcb_ManufactureData: {
@@ -52,6 +54,7 @@ declare const eda: {
 				flyingProbeTestingFile: boolean;
 			},
 			layers?: Array<{ layerId: number; isMirror: boolean }>,
+			objects?: GerberObject[],
 		) => Promise<File | null | undefined>;
 	};
 };
@@ -221,18 +224,51 @@ function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilena
  */
 export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	const layers = await eda.pcb_Layer.getAllLayers();
-	// 默认调用按嘉立创生产需求导出；为兼容自定义层，优先尝试显式传入全部层 ID
-	const layerParams = layers.map(l => ({ layerId: l.id, isMirror: false }));
+	// 默认调用按嘉立创生产需求导出，会漏掉自定义层；
+	// 为导出全部可 Gerber 化的层，显式传入过滤后的层 ID 与全部对象类型。
+	const GERBER_EXPORTABLE_LAYER_TYPES = new Set([
+		'SIGNAL',
+		'PLANE',
+		'SILKSCREEN',
+		'SOLDER_MASK',
+		'PASTE_MASK',
+		'CUSTOM',
+	]);
+	// 板框、机械层、钻孔图等不在上述类型枚举中，但 Gerber 需要它们
+	const GERBER_EXTRA_LAYER_IDS = new Set([11, 14, 56]);
+	const layerParams = layers
+		.filter(l => GERBER_EXPORTABLE_LAYER_TYPES.has(l.type) || GERBER_EXTRA_LAYER_IDS.has(l.id))
+		.map(l => ({ layerId: l.id, isMirror: false }));
+	const allObjects: GerberObject[] = [
+		'Pad',
+		'Via',
+		'Track',
+		'Text',
+		'Image',
+		'Dimension',
+		'BoardOutline',
+		'BoardCutout',
+		'CopperFilled',
+		'SolidRegion',
+		'FPCStiffener',
+		'Line',
+		'PlaneZone',
+		'ComponentProperty',
+		'ComponentSilkscreen',
+		'TearDrop',
+	];
+	console.log('[export-pcb-svg] gerber-source: requesting', layerParams.length, 'layers:', layerParams.map(p => p.layerId).join(','));
 	let file = await eda.pcb_ManufactureData.getGerberFile(
 		undefined,
-		undefined,
+		false,
 		'mm',
 		{ integerNumber: 4, decimalNumber: 6 },
-		{ metallicDrillingInformation: false, nonMetallicDrillingInformation: false, drillTable: false, flyingProbeTestingFile: false },
+		undefined,
 		layerParams,
+		allObjects,
 	);
 	if (!file) {
-		console.log('[export-pcb-svg] gerber-source: all-layer export returned nothing, fallback to default');
+		console.log('[export-pcb-svg] gerber-source: filtered all-layer export returned nothing, fallback to default');
 		file = await eda.pcb_ManufactureData.getGerberFile(
 			undefined,
 			undefined,
