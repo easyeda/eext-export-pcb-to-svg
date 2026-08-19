@@ -45,6 +45,13 @@ declare const eda: {
 			colorSilkscreen?: boolean,
 			unit?: number,
 			digitalFormat?: { integerNumber: number; decimalNumber: number },
+			other?: {
+				metallicDrillingInformation: boolean;
+				nonMetallicDrillingInformation: boolean;
+				drillTable: boolean;
+				flyingProbeTestingFile: boolean;
+			},
+			layers?: Array<{ layerId: number; isMirror: boolean }>,
 		) => Promise<File | null | undefined>;
 	};
 };
@@ -219,6 +226,8 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 		undefined,
 		0,
 		{ integerNumber: 4, decimalNumber: 6 },
+		undefined,
+		layers.map(l => ({ layerId: l.id, isMirror: false })),
 	);
 	if (!file)
 		throw new Error('EDA returned no Gerber file');
