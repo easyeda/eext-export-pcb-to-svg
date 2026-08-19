@@ -396,7 +396,11 @@ function wrapLayerChildren(
 	centerX: number,
 ): HastElement {
 	const transform = mirror ? `translate(${2 * centerX}, 0) scale(-1, 1)` : undefined;
-	const props: Record<string, unknown> = { style: `color:${escapeAttr(color)}` };
+	const props: Record<string, unknown> = {
+		style: `color:${escapeAttr(color)}`,
+		fill: color,
+		stroke: color,
+	};
 	if (transform)
 		props.transform = transform;
 	return { type: 'element', tagName: 'g', properties: props, children };
@@ -531,8 +535,6 @@ function renderMergedSvg(
 			xmlns: 'http://www.w3.org/2000/svg',
 			version: '1.1',
 			viewBox: viewBoxString(combinedVb),
-			fill: 'currentColor',
-			stroke: 'currentColor',
 			strokeLineCap: 'round',
 			strokeLineJoin: 'round',
 			strokeWidth: '0',
