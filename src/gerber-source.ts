@@ -63,6 +63,8 @@ const EXT_TO_ROLE: Record<string, GerberLayerRole> = {
 	GTA: 'mechanical',
 	GBB: 'mechanical',
 	GDL: 'mechanical',
+	GDD: 'mechanical',
+	GCL: 'mechanical',
 	// 钻孔（Excellon）
 	DRL: 'drill',
 	// 内层（.G1 ... .G32 视作内层；具体层号在前缀里记录）
@@ -183,6 +185,11 @@ function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilena
 	});
 	if (matchLayer)
 		return { name: matchLayer.name, color: matchLayer.color || colorByRole[role] };
+	// mechanical / 自定义层没有匹配到 EDA 层表时，用文件名主干作为可读名称
+	if (role === 'mechanical') {
+		const stem = originalFilename.replace(/\.[^.]+$/, '').replace(/^Gerber_/i, '').replace(/[_-]+/g, ' ').trim();
+		return { name: stem || nameByRole[role], color: colorByRole[role] };
+	}
 	return { name: nameByRole[role], color: colorByRole[role] };
 }
 
