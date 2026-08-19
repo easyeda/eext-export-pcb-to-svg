@@ -150,7 +150,7 @@ jobs:
           echo "🔍 验证构建输出格式..."
 
           # 检查构建产物目录
-          DIST_DIR="build/dist"
+          DIST_DIR="build"
           if [ ! -d "$DIST_DIR" ]; then
             echo "⚠️ 构建产物目录不存在: $DIST_DIR"
             # 尝试其他可能的目录
