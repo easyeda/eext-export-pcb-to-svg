@@ -150,7 +150,7 @@ jobs:
           echo "🔍 验证构建输出格式..."
 
           # 检查构建产物目录
-          DIST_DIR="build/dist"
+          DIST_DIR="build"
           if [ ! -d "$DIST_DIR" ]; then
             echo "⚠️ 构建产物目录不存在: $DIST_DIR"
             # 尝试其他可能的目录
@@ -271,7 +271,7 @@ jobs:
         run: |
           VERSION=${{ env.VERSION }}
           EEXTNAME=${{ env.EEXTNAME }}
-          DIST_DIR="build/dist"
+          DIST_DIR="build"
           BASE_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}.eext"
           ZH_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}_zh-cn.eext"
 
@@ -357,7 +357,7 @@ jobs:
         run: |
           VERSION=${{ env.VERSION }}
           EEXTNAME=${{ env.EEXTNAME }}
-          DIST_DIR="build/dist"
+          DIST_DIR="build"
           BASE_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}.eext"
           GLOBAL_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}_global.eext"
 
@@ -445,7 +445,7 @@ jobs:
         run: |
           VERSION=${{ env.VERSION }}
           EEXTNAME=${{ env.EEXTNAME }}
-          rm -f "build/dist/${EEXTNAME}_v${VERSION}.eext"
+          rm -f "build/${EEXTNAME}_v${VERSION}.eext"
           echo "Removed base eext"
 
       - name: Debug check artifacts
@@ -453,7 +453,7 @@ jobs:
         run: |
           VERSION=${{ env.VERSION }}
           EEXTNAME=${{ env.EEXTNAME }}
-          DIST_DIR="build/dist"
+          DIST_DIR="build"
           ZH_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}_zh-cn.eext"
           GLOBAL_FILE="${DIST_DIR}/${EEXTNAME}_v${VERSION}_global.eext"
 
@@ -483,7 +483,7 @@ jobs:
           name: Release v${{ env.VERSION }}
           body: ${{ env.RELEASE_NOTES }}
           files: |
-            build/dist/${{ env.EEXTNAME }}_v${{ env.VERSION }}_zh-cn.eext
-            build/dist/${{ env.EEXTNAME }}_v${{ env.VERSION }}_global.eext
+            build/${{ env.EEXTNAME }}_v${{ env.VERSION }}_zh-cn.eext
+            build/${{ env.EEXTNAME }}_v${{ env.VERSION }}_global.eext
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
