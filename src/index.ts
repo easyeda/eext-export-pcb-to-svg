@@ -137,7 +137,7 @@ interface CustomExportResult {
 	merge: boolean;
 }
 
-async function showCustomExportDialog(layers: Array<{ originalFilename: string; layerName: string }>): Promise<CustomExportResult | null> {
+async function showCustomExportDialog(layers: Array<{ originalFilename: string; displayName: string }>): Promise<CustomExportResult | null> {
 	const iframeId = 'exportPcbSvgCustomDialog';
 	await eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
 
