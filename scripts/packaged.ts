@@ -25,7 +25,7 @@ function main() {
 	const rootDir = path.join(__dirname, '../');
 	const extensionName = extensionConfig.name ?? 'extension';
 	const extensionVersion = extensionConfig.version ?? '1.0.0';
-	const outputPath = path.join(__dirname, 'dist', `${extensionName}_v${extensionVersion}.eext`);
+	const outputPath = path.join(__dirname, '..', 'build', `${extensionName}_v${extensionVersion}.eext`);
 
 	packageExtension(rootDir, outputPath).then(() => {
 		console.log(`Packaging complete: ${outputPath}`);

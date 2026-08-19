@@ -2,6 +2,7 @@
 /.husky/
 /.vscode/
 /build/
+/scripts/
 /config/
 /coverage/
 /node_modules/

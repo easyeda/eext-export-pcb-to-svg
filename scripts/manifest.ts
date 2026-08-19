@@ -45,13 +45,13 @@ function generateManifest() {
 	const packageJsonPath = path.join(rootDir, 'package.json');
 	const packageJson = fs.readJsonSync(packageJsonPath);
 
-	const buildDir = path.join(rootDir, 'build');
+	const scriptsDir = path.join(rootDir, 'scripts');
 	const configDir = path.join(rootDir, 'config');
 
-	// 获取框架文件列表（排除 build/dist 目录、create.js 和 manifest.ts）
-	const buildFiles = getFilesRecursively(buildDir, rootDir).filter(file => !file.startsWith('build/dist/') && file !== 'build/create.js' && file !== 'build/manifest.ts');
+	// 获取框架文件列表（排除脚本入口文件，避免自引用）
+	const scriptsFiles = getFilesRecursively(scriptsDir, rootDir).filter(file => file !== 'scripts/create.js' && file !== 'scripts/manifest.ts');
 	const configFiles = getFilesRecursively(configDir, rootDir);
-	const frameworkFiles = [...buildFiles, ...configFiles];
+	const frameworkFiles = [...scriptsFiles, ...configFiles];
 
 	// 构建文件哈希映射
 	const fileHashes: Record<string, string> = {};
