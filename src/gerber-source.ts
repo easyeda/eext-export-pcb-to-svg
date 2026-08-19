@@ -221,14 +221,25 @@ function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilena
  */
 export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	const layers = await eda.pcb_Layer.getAllLayers();
-	const file = await eda.pcb_ManufactureData.getGerberFile(
+	// 默认调用按嘉立创生产需求导出；为兼容自定义层，优先尝试显式传入全部层 ID
+	const layerParams = layers.map(l => ({ layerId: l.id, isMirror: false }));
+	let file = await eda.pcb_ManufactureData.getGerberFile(
 		undefined,
 		undefined,
 		0,
 		{ integerNumber: 4, decimalNumber: 6 },
-		undefined,
-		layers.map(l => ({ layerId: l.id, isMirror: false })),
+		{ metallicDrillingInformation: false, nonMetallicDrillingInformation: false, drillTable: false, flyingProbeTestingFile: false },
+		layerParams,
 	);
+	if (!file) {
+		console.log('[export-pcb-svg] gerber-source: all-layer export returned nothing, fallback to default');
+		file = await eda.pcb_ManufactureData.getGerberFile(
+			undefined,
+			undefined,
+			0,
+			{ integerNumber: 4, decimalNumber: 6 },
+		);
+	}
 	if (!file)
 		throw new Error('EDA returned no Gerber file');
 	const buf = await file.arrayBuffer();
