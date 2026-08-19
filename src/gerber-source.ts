@@ -81,6 +81,9 @@ function classifyByFilename(name: string): GerberLayerRole {
 		return EXT_TO_ROLE[ext];
 	if (/^G\d+$/.test(ext))
 		return 'inner';
+	// 自定义机械层：GM1..GM32
+	if (/^GM\d+$/.test(ext))
+		return 'mechanical';
 	return 'unknown';
 }
 
@@ -92,14 +95,27 @@ function looksLikeDrill(text: string): boolean {
 	return head.includes('M48') || head.includes('FMAT') || head.includes(';FILE_FORMAT=');
 }
 
-/** Gerber 文件通常以 %FS / G04 / %MO 开头。Excellon 用 M48 / FMAT。 */
+/**
+ * Gerber 文件内容嗅探。
+ * 支持标准头部（%FS / G04 / %MO / %IN）以及自定义层可能先出现的
+ * D01/D02/D03 操作、%AD 光圈定义、X###Y### 坐标数据、M02 结束符。
+ * Excellon 用 M48 / FMAT / ;FILE_FORMAT=，在这里排除。
+ */
 function looksLikeGerber(text: string): boolean {
 	if (!text)
 		return false;
-	const head = text.slice(0, 200).toUpperCase();
+	const head = text.slice(0, 8192).toUpperCase();
 	if (head.includes('M48') || head.includes('FMAT') || head.includes(';FILE_FORMAT='))
 		return false;
-	return head.includes('%FS') || head.includes('G04') || head.includes('%MO') || head.includes('%IN');
+	if (head.includes('%FS') || head.includes('G04') || head.includes('%MO') || head.includes('%IN'))
+		return true;
+	if (head.includes('%AD') || head.includes('D01') || head.includes('D02') || head.includes('D03'))
+		return true;
+	if (/X\d+Y\d+/.test(head))
+		return true;
+	if (head.includes('M02'))
+		return true;
+	return false;
 }
 
 /** 决定每个 role 的配色（取自 EDA 层表） */
