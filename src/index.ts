@@ -177,6 +177,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 					mirrored: Array.isArray(data.mirrored) ? data.mirrored : [],
 					merge: !!data.merge,
 					colors: data.colors || {},
+					order: Array.isArray(data.order) ? data.order : (Array.isArray(data.selected) ? data.selected : []),
 				});
 				cleanup();
 			}
