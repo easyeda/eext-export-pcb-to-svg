@@ -352,6 +352,8 @@ export interface RenderOptions {
 	merge?: boolean;
 	/** 需要水平镜像的层 originalFilename 集合 */
 	mirrorLayerIds?: Set<string>;
+	/** 用户自定义层颜色（originalFilename → color），优先级高于 Gerber 层表颜色 */
+	layerColors?: Map<string, string>;
 }
 
 function parseViewBox(vb: string | number[] | undefined): [number, number, number, number] | null {
@@ -419,9 +421,14 @@ export async function renderGerberLayersToSvgs(
 	pourById: Map<string, PourNet> = new Map(),
 	opts: RenderOptions = {},
 ): Promise<RenderedSvg[]> {
+	const layerColors = opts.layerColors;
+	const layersWithColor = layers.map((l) => {
+		const override = layerColors?.get(l.originalFilename);
+		return override && override !== l.color ? { ...l, color: override } : l;
+	});
 	const rendered: Array<{ ok: true; layer: GerberLayerText; image: ImageTree; svg: HastElement } | { ok: false; content: string; role: GerberLayerText['role']; filename: string }> = [];
-	for (let i = 0; i < layers.length; i++)
-		rendered.push(await renderLayerToTree(layers[i]));
+	for (let i = 0; i < layersWithColor.length; i++)
+		rendered.push(await renderLayerToTree(layersWithColor[i]));
 
 	// 用"铺铜包围盒中心 ↔ SVG 填充区域中心"聚类推导 complexPolygon 偏移量
 	const pourGeoms = await collectPourGeoms();

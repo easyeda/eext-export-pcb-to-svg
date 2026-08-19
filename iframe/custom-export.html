@@ -63,11 +63,62 @@
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;
+			vertical-align: middle;
 		}
 		tbody tr:nth-child(even) { background: #fafafa; }
 		tbody tr:hover { background: #f0f7ff; }
-		.col-export { width: 60%; }
+		tbody tr.dragging { opacity: 0.6; background: #e6f7ff; }
+		tbody tr.drag-over { border-top: 2px solid #1890ff; }
+		.col-sort { width: 80px; }
+		.col-color { width: 56px; }
+		.col-export { width: calc(60% - 136px); }
 		.col-mirror { width: 40%; }
+		.color-swatch {
+			position: relative;
+			width: 28px;
+			height: 20px;
+			border-radius: 3px;
+			border: 1px solid #d9d9d9;
+			cursor: pointer;
+			overflow: hidden;
+		}
+		.color-swatch input[type="color"] {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
+			padding: 0;
+			border: 0;
+			background: transparent;
+			cursor: pointer;
+			opacity: 0;
+		}
+		.drag-handle {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			cursor: grab;
+			color: #999;
+			font-size: 12px;
+			line-height: 1;
+			user-select: none;
+			margin-right: 8px;
+		}
+		.drag-handle:active { cursor: grabbing; }
+		.sort-num {
+			display: inline-block;
+			min-width: 18px;
+			color: #999;
+			font-size: 12px;
+			text-align: center;
+		}
+		.sort-hint {
+			font-weight: 400;
+			font-size: 12px;
+			color: #888;
+			margin-left: 6px;
+		}
 		label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
 		input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
 		.mode {
@@ -109,6 +160,8 @@
 		<table>
 			<thead>
 				<tr>
+					<th class="col-sort">排序<span class="sort-hint">（拖动调整）</span></th>
+						<th class="col-color">颜色</th>
 					<th class="col-export">
 						<label>
 							<input type="checkbox" id="selectAllExport" />
@@ -139,30 +192,51 @@
 
 	<script>
 		let layers = [];
+		let order = [];
+		const selectedSet = new Set();
+		const mirroredSet = new Set();
+		const layerMap = new Map();
+		const colorMap = new Map();
 
 		function displayNameOf(l) {
 			return l.displayName || l.layerName || l.originalFilename || '';
 		}
 
+		function escapeHtml(s) {
+			return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+		}
+
 		function render() {
 			const tbody = document.getElementById('layerList');
 			if (!layers.length) {
-				tbody.innerHTML = '<tr><td colspan="2" class="empty">没有可用的层</td></tr>';
+				tbody.innerHTML = '<tr><td colspan="4" class="empty">没有可用的层</td></tr>';
 				return;
 			}
-			tbody.innerHTML = layers.map((l, i) => {
+			tbody.innerHTML = order.map((filename, i) => {
+				const l = layerMap.get(filename);
+				if (!l) return '';
 				const name = displayNameOf(l);
+				const color = colorMap.get(filename) || l.color || '#888888';
 				return `
-					<tr>
+					<tr draggable="true" data-filename="${escapeHtml(filename)}">
+						<td class="col-sort">
+							<span class="drag-handle" title="拖动排序">⋮⋮</span>
+							<span class="sort-num">${i + 1}</span>
+						</td>
+						<td class="col-color">
+							<div class="color-swatch" title="点击修改颜色" style="background-color: ${escapeHtml(color)}">
+								<input type="color" class="color-picker" data-filename="${escapeHtml(filename)}" value="${escapeHtml(color)}" />
+							</div>
+						</td>
 						<td class="col-export">
 							<label>
-								<input type="checkbox" class="export-cb" data-idx="${i}" checked />
+								<input type="checkbox" class="export-cb" data-filename="${escapeHtml(filename)}" ${selectedSet.has(filename) ? 'checked' : ''} />
 								<span title="${escapeHtml(name)}">${escapeHtml(name)}</span>
 							</label>
 						</td>
 						<td class="col-mirror">
 							<label>
-								<input type="checkbox" class="mirror-cb" data-idx="${i}" />
+								<input type="checkbox" class="mirror-cb" data-filename="${escapeHtml(filename)}" ${mirroredSet.has(filename) ? 'checked' : ''} />
 								<span>镜像</span>
 							</label>
 						</td>
@@ -170,10 +244,48 @@
 				`;
 			}).join('');
 			updateSelectAllState();
+			bindDragEvents();
 		}
 
-		function escapeHtml(s) {
-			return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+		function bindDragEvents() {
+			const tbody = document.getElementById('layerList');
+			let dragFilename = null;
+
+			tbody.querySelectorAll('tr').forEach((tr) => {
+				tr.addEventListener('dragstart', (e) => {
+					dragFilename = tr.dataset.filename;
+					tr.classList.add('dragging');
+					e.dataTransfer.effectAllowed = 'move';
+					e.dataTransfer.setData('text/plain', dragFilename);
+				});
+				tr.addEventListener('dragend', () => {
+					tr.classList.remove('dragging');
+					tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+					dragFilename = null;
+				});
+				tr.addEventListener('dragover', (e) => {
+					e.preventDefault();
+					if (!dragFilename || dragFilename === tr.dataset.filename) return;
+					e.dataTransfer.dropEffect = 'move';
+					tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+					tr.classList.add('drag-over');
+				});
+				tr.addEventListener('dragleave', () => {
+					tr.classList.remove('drag-over');
+				});
+				tr.addEventListener('drop', (e) => {
+					e.preventDefault();
+					tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+					const targetFilename = tr.dataset.filename;
+					if (!dragFilename || dragFilename === targetFilename) return;
+					const from = order.indexOf(dragFilename);
+					const to = order.indexOf(targetFilename);
+					if (from < 0 || to < 0) return;
+					order.splice(from, 1);
+					order.splice(to, 0, dragFilename);
+					render();
+				});
+			});
 		}
 
 		function post(type, payload) {
@@ -191,37 +303,70 @@
 			if (!e.data || typeof e.data !== 'object') return;
 			if (e.data.type === 'init') {
 				layers = Array.isArray(e.data.layers) ? e.data.layers : [];
+				layerMap.clear();
+				selectedSet.clear();
+				mirroredSet.clear();
+				colorMap.clear();
+				for (const l of layers) {
+					layerMap.set(l.originalFilename, l);
+					selectedSet.add(l.originalFilename);
+					if (l.color) colorMap.set(l.originalFilename, l.color);
+				}
+				order = layers.map(l => l.originalFilename);
 				render();
 			}
 		});
 
 		document.getElementById('selectAllExport').addEventListener('change', (e) => {
-			document.querySelectorAll('.export-cb').forEach(cb => cb.checked = e.target.checked);
+			document.querySelectorAll('.export-cb').forEach((cb) => {
+				const filename = cb.dataset.filename;
+				if (e.target.checked) selectedSet.add(filename);
+				else selectedSet.delete(filename);
+				cb.checked = e.target.checked;
+			});
 		});
 
 		document.getElementById('selectAllMirror').addEventListener('change', (e) => {
-			document.querySelectorAll('.mirror-cb').forEach(cb => cb.checked = e.target.checked);
+			document.querySelectorAll('.mirror-cb').forEach((cb) => {
+				const filename = cb.dataset.filename;
+				if (e.target.checked) mirroredSet.add(filename);
+				else mirroredSet.delete(filename);
+				cb.checked = e.target.checked;
+			});
 		});
 
 		document.getElementById('layerList').addEventListener('change', (e) => {
-			if (e.target.classList.contains('export-cb') || e.target.classList.contains('mirror-cb')) {
+			if (e.target.classList.contains('export-cb')) {
+				const filename = e.target.dataset.filename;
+				if (e.target.checked) selectedSet.add(filename);
+				else selectedSet.delete(filename);
 				updateSelectAllState();
+			}
+			else if (e.target.classList.contains('mirror-cb')) {
+				const filename = e.target.dataset.filename;
+				if (e.target.checked) mirroredSet.add(filename);
+				else mirroredSet.delete(filename);
+				updateSelectAllState();
+			}
+			else if (e.target.classList.contains('color-picker')) {
+				const filename = e.target.dataset.filename;
+				const value = e.target.value;
+				colorMap.set(filename, value);
+				const swatch = e.target.closest('.color-swatch');
+				if (swatch) swatch.style.backgroundColor = value;
 			}
 		});
 
 		document.getElementById('okBtn').addEventListener('click', () => {
-			const selected = [];
-			const mirrored = [];
-			document.querySelectorAll('.export-cb').forEach((cb) => {
-				const idx = Number(cb.dataset.idx);
-				if (cb.checked && layers[idx]) selected.push(layers[idx].originalFilename);
-			});
-			document.querySelectorAll('.mirror-cb').forEach((cb) => {
-				const idx = Number(cb.dataset.idx);
-				if (cb.checked && layers[idx]) mirrored.push(layers[idx].originalFilename);
-			});
+			const selected = order.filter(f => selectedSet.has(f));
+			const mirrored = order.filter(f => mirroredSet.has(f));
 			const merge = document.querySelector('input[name="exportMode"]:checked')?.value === 'merge';
-			post('result', { selected, mirrored, merge });
+			const colors = {};
+			for (const filename of selected) {
+				const c = colorMap.get(filename);
+				if (c) colors[filename] = c;
+			}
+			post('result', { selected, mirrored, order: selected, merge, colors });
 		});
 
 		document.getElementById('cancelBtn').addEventListener('click', () => {

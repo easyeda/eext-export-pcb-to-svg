@@ -4,7 +4,7 @@
  * 流程：`getGerberFile` → JSZip 解压 → tracespace 解析/铺铜 → 自定义 SVG 拼装 → ZIP 打包。
  */
 
-import type { RenderOptions } from './gerber-render.ts';
+import type { GerberLayerText, RenderOptions } from './gerber-render.ts';
 import extensionConfig from '../extension.json' with { type: 'json' };
 import { renderGerberLayersToSvgs } from './gerber-render.ts';
 import { collectGerberSources } from './gerber-source.ts';
@@ -135,9 +135,10 @@ interface CustomExportResult {
 	selected: string[];
 	mirrored: string[];
 	merge: boolean;
+	colors: Record<string, string>;
 }
 
-async function showCustomExportDialog(layers: Array<{ originalFilename: string; displayName: string }>): Promise<CustomExportResult | null> {
+async function showCustomExportDialog(layers: Array<{ originalFilename: string; displayName: string; color: string }>): Promise<CustomExportResult | null> {
 	const iframeId = 'exportPcbSvgCustomDialog';
 	await eda.sys_IFrame.closeIFrame(iframeId).catch(() => {});
 
@@ -151,7 +152,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 		}
 
 		function onMessage(e: MessageEvent) {
-			const data = e.data as { type?: string; selected?: string[]; mirrored?: string[]; merge?: boolean } | undefined;
+			const data = e.data as { type?: string; selected?: string[]; mirrored?: string[]; merge?: boolean; colors?: Record<string, string> } | undefined;
 			if (!data || typeof data !== 'object')
 				return;
 			if (data.type === 'ready') {
@@ -175,6 +176,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 					selected: Array.isArray(data.selected) ? data.selected : [],
 					mirrored: Array.isArray(data.mirrored) ? data.mirrored : [],
 					merge: !!data.merge,
+					colors: data.colors || {},
 				});
 				cleanup();
 			}
@@ -255,20 +257,31 @@ export async function exportCurrentBoardToSvgCustom(): Promise<void> {
 
 		const dialogResult = await showCustomExportDialog(allLayers.map(l => ({
 			originalFilename: l.originalFilename,
-			displayName: l.originalFilename.replace(/^Gerber_/i, ''),
+			displayName: l.layerName || l.originalFilename.replace(/^Gerber_/i, ''),
+			color: l.color || '#888888',
 		})));
 		if (!dialogResult)
 			return;
 
-		const selectedLayers = allLayers.filter(l => dialogResult.selected.includes(l.originalFilename));
+		if (dialogResult.selected.length === 0)
+			return;
+
+		const layerByName = new Map(allLayers.map(l => [l.originalFilename, l]));
+		const selectedLayers = dialogResult.order
+			.map(f => layerByName.get(f))
+			.filter((l): l is GerberLayerText => !!l);
 		if (selectedLayers.length === 0)
 			return;
 
 		const pourById = await collectPourNets();
 		console.log(`[export-pcb-svg] custom step: selected=${selectedLayers.length}, mirror=${dialogResult.mirrored.length}, merge=${dialogResult.merge}`);
+		const layerColors = new Map<string, string>();
+		for (const [filename, color] of Object.entries(dialogResult.colors))
+			layerColors.set(filename, color);
 		const renderOptions: RenderOptions = {
 			merge: dialogResult.merge,
 			mirrorLayerIds: new Set(dialogResult.mirrored),
+			layerColors,
 		};
 		const rendered = await renderGerberLayersToSvgs(selectedLayers, pourById, renderOptions);
 
