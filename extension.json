@@ -3,7 +3,7 @@
 	"uuid": "a15fd4e1806d4745b85b4c3d09e1d3db",
 	"displayName": "导出 PCB 为 SVG",
 	"description": "将当前 PCB 文档导出为高保真 SVG 文件：板框、走线、圆弧、焊盘、过孔、覆铜、丝印、钻孔、器件、禁布区、尺寸标注、属性、内嵌图片等。",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"publisher": "EasyEDA",
 	"engines": {
 		"eda": "^3.2.0"

@@ -226,18 +226,23 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	const layers = await eda.pcb_Layer.getAllLayers();
 	// 默认调用按嘉立创生产需求导出，会漏掉自定义层；
 	// 为导出全部可 Gerber 化的层，显式传入过滤后的层 ID 与全部对象类型。
-	const GERBER_EXPORTABLE_LAYER_TYPES = new Set([
-		'SIGNAL',
-		'PLANE',
-		'SILKSCREEN',
-		'SOLDER_MASK',
-		'PASTE_MASK',
-		'CUSTOM',
-	]);
-	// 板框、机械层、钻孔图等不在上述类型枚举中，但 Gerber 需要它们
-	const GERBER_EXTRA_LAYER_IDS = new Set([11, 14, 56]);
+	function isGerberExportableLayer(l: EdaLayerItem): boolean {
+		// 标准层：顶层/底层/丝印/阻焊/钢网/装配/板框（id 1-11）
+		if (l.id >= 1 && l.id <= 11)
+			return true;
+		// 文档层、机械层、钻孔图
+		if ([13, 14, 56].includes(l.id))
+			return true;
+		// 内层 1-30
+		if (l.id >= 15 && l.id <= 44)
+			return true;
+		// 自定义层 1-30
+		if (l.id >= 71 && l.id <= 100)
+			return true;
+		return false;
+	}
 	const layerParams = layers
-		.filter(l => GERBER_EXPORTABLE_LAYER_TYPES.has(l.type) || GERBER_EXTRA_LAYER_IDS.has(l.id))
+		.filter(isGerberExportableLayer)
 		.map(l => ({ layerId: l.id, isMirror: false }));
 	const allObjects: GerberObject[] = [
 		'Pad',
