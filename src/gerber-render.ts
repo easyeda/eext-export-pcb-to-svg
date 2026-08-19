@@ -484,29 +484,6 @@ function renderSingleSvg(layer: GerberLayerText, svg: HastElement, mirrorIds: Se
 	};
 }
 
-const MERGE_ROLE_ORDER: Record<GerberLayerRole, number> = {
-	outline: 0,
-	mechanical: 1,
-	drill: 2,
-	bottomSilk: 3,
-	bottomMask: 4,
-	bottomPaste: 5,
-	bottomCopper: 6,
-	inner: 7,
-	topCopper: 8,
-	topMask: 9,
-	topPaste: 10,
-	topSilk: 11,
-	unknown: 12,
-};
-
-function innerLayerNumber(layer: GerberLayerText): number {
-	if (layer.role !== 'inner')
-		return 0;
-	const m = /inner(\d+)/i.exec(layer.layerName) || /\.g(\d+)$/i.exec(layer.originalFilename);
-	return m ? Number(m[1]) : 0;
-}
-
 function renderMergedSvg(
 	items: Array<{ layer: GerberLayerText; svg: HastElement }>,
 	mirrorIds: Set<string>,
@@ -520,16 +497,11 @@ function renderMergedSvg(
 	const combinedVb = combineViewBoxes(viewBoxes) || [0, 0, 100, 100];
 	const centerX = combinedVb[0] + combinedVb[2] / 2;
 
-	const sortedItems = [...items].sort((a, b) => {
-		const orderA = MERGE_ROLE_ORDER[a.layer.role];
-		const orderB = MERGE_ROLE_ORDER[b.layer.role];
-		if (orderA !== orderB)
-			return orderA - orderB;
-		return innerLayerNumber(a.layer) - innerLayerNumber(b.layer);
-	});
+	// 输入顺序是“视觉效果从上到下”，SVG 后绘制者在上，因此反向渲染
+	const renderItems = [...items].reverse();
 
 	const groups: (HastElement | string)[] = [];
-	for (const { layer, svg } of sortedItems) {
+	for (const { layer, svg } of renderItems) {
 		const color = layer.color || '#888888';
 		const shouldMirror = mirrorIds.has(layer.originalFilename);
 		groups.push(wrapLayerChildren(svg.children || [], color, shouldMirror, centerX));

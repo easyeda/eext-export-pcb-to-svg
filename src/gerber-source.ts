@@ -352,20 +352,21 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 		}
 		seen.set(key, count + 1);
 	}
-	// 排序：顶层铜 → 底铜 → 内层 → 丝印 → 阻焊 → 钢网 → 边框 → 机械 → 钻孔
+	// 默认视觉顺序：从上到下（列表越靠前越在上方）。合并 SVG 渲染时会反向绘制，
+	// 因此排在最前面的钻孔最后被绘制，呈现在最上层。
 	const order: GerberLayerRole[] = [
-		'topCopper',
-		'bottomCopper',
-		'inner',
+		'drill',
 		'topSilk',
-		'bottomSilk',
-		'topMask',
-		'bottomMask',
 		'topPaste',
+		'topMask',
+		'topCopper',
+		'inner',
+		'bottomCopper',
+		'bottomMask',
 		'bottomPaste',
+		'bottomSilk',
 		'outline',
 		'mechanical',
-		'drill',
 		'unknown',
 	];
 	out.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));
