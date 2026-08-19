@@ -114,12 +114,6 @@
 			font-size: 12px;
 			text-align: center;
 		}
-		.sort-hint {
-			font-weight: 400;
-			font-size: 12px;
-			color: #888;
-			margin-left: 6px;
-		}
 		label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
 		input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
 		.mode {
@@ -161,7 +155,7 @@
 		<table>
 			<thead>
 				<tr>
-					<th class="col-sort">排序<span class="sort-hint">（拖动调整）</span></th>
+					<th class="col-sort">排序</th>
 						<th class="col-color">颜色</th>
 					<th class="col-export">
 						<label>
@@ -182,8 +176,8 @@
 	</div>
 
 	<div class="mode">
-		<label><input type="radio" name="exportMode" value="separate" checked /> 独立导出</label>
-		<label><input type="radio" name="exportMode" value="merge" /> 合并导出</label>
+		<label><input type="radio" name="exportMode" value="merge" checked /> 合并导出</label>
+		<label><input type="radio" name="exportMode" value="separate" /> 独立导出</label>
 	</div>
 
 	<div class="buttons">
