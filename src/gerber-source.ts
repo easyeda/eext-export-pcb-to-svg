@@ -146,7 +146,43 @@ function canParseAsGerber(text: string): boolean {
 	}
 }
 
-/** 决定每个 role 的配色（取自 EDA 层表） */
+/** 根据 Gerber 角色/文件名推断对应的 EDA 层 id，用于直接取 API 颜色 */
+function edaLayerIdFor(role: GerberLayerRole, originalFilename: string): number | null {
+	const ext = (originalFilename.split('.').pop() || '').toLowerCase();
+	switch (role) {
+		case 'topCopper': return 1;
+		case 'bottomCopper': return 2;
+		case 'topSilk': return 3;
+		case 'bottomSilk': return 4;
+		case 'topMask': return 5;
+		case 'bottomMask': return 6;
+		case 'topPaste': return 7;
+		case 'bottomPaste': return 8;
+		case 'outline': return 11;
+		case 'inner': {
+			const m = /^g(\d+)$/.exec(ext);
+			return m ? 14 + Number(m[1]) : null;
+		}
+		case 'mechanical':
+		case 'unknown': {
+			if (ext === 'gdl')
+				return 13; // DocumentLayer
+			if (ext === 'gdd')
+				return 56; // DrillDrawing
+			if (['gml', 'gta', 'gbb', 'gcl'].includes(ext))
+				return 14; // Mechanical
+			const m = /^gm(\d+)$/.exec(ext);
+			if (m)
+				return 70 + Number(m[1]); // Custom 1..30 → 71..100
+			return null;
+		}
+		case 'drill':
+		default:
+			return null;
+	}
+}
+
+/** 决定每个 role 的配色（优先按 EDA 层 id 直接取 API 颜色，否则按名称匹配，最后回退默认值） */
 function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilename: string): { name: string; color: string } {
 	const norm = (s: string) => s.toLowerCase().replace(/[_\s]+/g, '');
 	const ext = (originalFilename.split('.').pop() || '').toLowerCase();
@@ -180,35 +216,40 @@ function pickColor(layers: EdaLayerItem[], role: GerberLayerRole, originalFilena
 		drill: 'Drill',
 		unknown: 'Unknown',
 	};
-	const matchLayer = layers.find((l) => {
-		const n = norm(l.name);
-		if (role === 'topCopper' && n.includes('top') && n.includes('copper'))
-			return true;
-		if (role === 'bottomCopper' && n.includes('bottom') && n.includes('copper'))
-			return true;
-		if (role === 'topSilk' && (n.includes('topsilk') || (n.includes('silkscreen') && n.includes('top'))))
-			return true;
-		if (role === 'bottomSilk' && (n.includes('bottomsilk') || (n.includes('silkscreen') && n.includes('bottom'))))
-			return true;
-		if (role === 'topMask' && n.includes('mask') && n.includes('top'))
-			return true;
-		if (role === 'bottomMask' && n.includes('mask') && n.includes('bottom'))
-			return true;
-		if (role === 'topPaste' && n.includes('paste') && n.includes('top'))
-			return true;
-		if (role === 'bottomPaste' && n.includes('paste') && n.includes('bottom'))
-			return true;
-		if (role === 'outline' && (n.includes('outline') || n === 'boardoutline'))
-			return true;
-		if (role === 'drill' && (n.includes('drill') || n.includes('hole')))
-			return true;
-		if (role === 'inner' && n.includes('inner')) {
-			const m = /inner(\d+)/.exec(n);
-			if (m && ext === `g${m[1]}`)
+	const layerId = edaLayerIdFor(role, originalFilename);
+	let matchLayer = layerId !== null ? layers.find(l => l.id === layerId) : undefined;
+
+	if (!matchLayer) {
+		matchLayer = layers.find((l) => {
+			const n = norm(l.name);
+			if (role === 'topCopper' && n.includes('top') && n.includes('copper'))
 				return true;
-		}
-		return false;
-	});
+			if (role === 'bottomCopper' && n.includes('bottom') && n.includes('copper'))
+				return true;
+			if (role === 'topSilk' && (n.includes('topsilk') || (n.includes('silkscreen') && n.includes('top'))))
+				return true;
+			if (role === 'bottomSilk' && (n.includes('bottomsilk') || (n.includes('silkscreen') && n.includes('bottom'))))
+				return true;
+			if (role === 'topMask' && n.includes('mask') && n.includes('top'))
+				return true;
+			if (role === 'bottomMask' && n.includes('mask') && n.includes('bottom'))
+				return true;
+			if (role === 'topPaste' && n.includes('paste') && n.includes('top'))
+				return true;
+			if (role === 'bottomPaste' && n.includes('paste') && n.includes('bottom'))
+				return true;
+			if (role === 'outline' && (n.includes('outline') || n === 'boardoutline'))
+				return true;
+			if (role === 'drill' && (n.includes('drill') || n.includes('hole')))
+				return true;
+			if (role === 'inner' && n.includes('inner')) {
+				const m = /inner(\d+)/.exec(n);
+				if (m && ext === `g${m[1]}`)
+					return true;
+			}
+			return false;
+		});
+	}
 	if (matchLayer)
 		return { name: matchLayer.name, color: matchLayer.color || colorByRole[role] };
 	// mechanical / 自定义层没有匹配到 EDA 层表时，用文件名主干作为可读名称
@@ -354,15 +395,16 @@ export async function collectGerberSources(): Promise<GerberLayerText[]> {
 	}
 	// 默认视觉顺序：从上到下（列表越靠前越在上方）。合并 SVG 渲染时会反向绘制，
 	// 因此排在最前面的钻孔最后被绘制，呈现在最上层。
+	// 顶层/底层均按 Silk → Solder Mask → Copper → Paste Mask 排列，铜层位于阻焊与钢网之间。
 	const order: GerberLayerRole[] = [
 		'drill',
 		'topSilk',
-		'topPaste',
 		'topMask',
 		'topCopper',
+		'topPaste',
 		'inner',
-		'bottomCopper',
 		'bottomMask',
+		'bottomCopper',
 		'bottomPaste',
 		'bottomSilk',
 		'outline',

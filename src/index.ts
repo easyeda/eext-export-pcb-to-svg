@@ -191,7 +191,7 @@ async function showCustomExportDialog(layers: Array<{ originalFilename: string; 
 		}
 
 		globalThis.addEventListener?.('message', onMessage);
-		eda.sys_IFrame.openIFrame('/iframe/custom-export.html', 680, 520, iframeId, {
+		eda.sys_IFrame.openIFrame('/iframe/custom-export.html', 680, 640, iframeId, {
 			title: '自定义导出',
 			buttonCallbackFn: (button) => {
 				if (button === 'close' && !resolved) {
